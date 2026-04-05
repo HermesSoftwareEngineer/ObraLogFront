@@ -1,9 +1,12 @@
 import { Eye, EyeOff, LoaderCircle } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import AuthSplitLayout from '../components/AuthSplitLayout'
+import { registerUser } from '../services/authService'
+import { saveAuthSession } from '../services/authStorage'
 
 function CadastroPage() {
+  const navigate = useNavigate()
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [companyName, setCompanyName] = useState('')
@@ -31,11 +34,23 @@ function CadastroPage() {
 
     setIsLoading(true)
 
-    await new Promise((resolve) => {
-      setTimeout(resolve, 1200)
-    })
+    try {
+      const data = await registerUser({
+        nome: fullName,
+        email,
+        senha: password,
+      })
 
-    setIsLoading(false)
+      saveAuthSession(data.token, {
+        ...data.user,
+        empresa: companyName,
+      })
+      navigate('/dashboard', { replace: true })
+    } catch (err) {
+      setError(err.message || 'Nao foi possivel criar sua conta.')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (

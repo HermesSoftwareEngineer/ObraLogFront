@@ -20,3 +20,21 @@ export async function getCurrentUser(token) {
     token,
   })
 }
+
+export async function linkTelegramChatId(token, telegramChatId) {
+  return apiRequest('/auth/link-telegram', {
+    method: 'PATCH',
+    token,
+    body: {
+      telegram_chat_id: telegramChatId,
+    },
+  })
+}
+
+export async function generateTelegramLinkCode(token, payload) {
+  return apiRequest('/auth/telegram-link-codes', {
+    method: 'POST',
+    token,
+    body: payload,
+  })
+}

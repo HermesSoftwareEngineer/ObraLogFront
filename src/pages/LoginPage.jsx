@@ -1,9 +1,12 @@
 import { Eye, EyeOff, LoaderCircle } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import AuthSplitLayout from '../components/AuthSplitLayout'
+import { loginUser } from '../services/authService'
+import { saveAuthSession } from '../services/authStorage'
 
 function LoginPage() {
+  const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -15,19 +18,19 @@ function LoginPage() {
     setError('')
     setIsLoading(true)
 
-    await new Promise((resolve) => {
-      setTimeout(resolve, 1100)
-    })
+    try {
+      const data = await loginUser({
+        email,
+        senha: password,
+      })
 
-    const isValid = email === 'demo@diariodeobra.com' && password === '123456'
-
-    if (!isValid) {
-      setError('Credenciais invalidas. Use demo@diariodeobra.com e 123456 para testar.')
+      saveAuthSession(data.token, data.user)
+      navigate('/dashboard', { replace: true })
+    } catch (err) {
+      setError(err.message || 'Nao foi possivel realizar login.')
+    } finally {
       setIsLoading(false)
-      return
     }
-
-    setIsLoading(false)
   }
 
   return (
