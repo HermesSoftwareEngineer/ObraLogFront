@@ -1,0 +1,6 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Segoe UI", sans-serif;
+  --font-display: "Sora", "Inter", "Segoe UI", sans-serif;
+}
