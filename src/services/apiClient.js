@@ -22,15 +22,17 @@ async function parseResponseBody(response) {
 
 export async function apiRequest(path, options = {}) {
   const { method = 'GET', body, token, headers = {} } = options
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
+  const hasBody = body !== undefined && body !== null
 
   const response = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
     method,
     headers: {
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
+      ...(hasBody && !isFormData ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...headers,
     },
-    body: body ? JSON.stringify(body) : undefined,
+    body: hasBody ? (isFormData ? body : JSON.stringify(body)) : undefined,
   })
 
   const data = await parseResponseBody(response)

@@ -1,5 +1,7 @@
 import {
   AlertTriangle,
+  ImagePlus,
+  Images,
   LoaderCircle,
   Pencil,
   Plus,
@@ -13,9 +15,12 @@ import { getCurrentUser } from '../services/authService'
 import { clearAuthSession, getAuthToken } from '../services/authStorage'
 import {
   createRegistro,
+  deleteRegistroImagem,
   deleteRegistro,
   getRegistroById,
+  listRegistroImagens,
   listRegistros,
+  uploadRegistroImagem,
   updateRegistro,
 } from '../services/registrosService'
 import { listFrentesServico } from '../services/frentesServicoService'
@@ -138,6 +143,53 @@ function toInputDate(value) {
   return `${year}-${month}-${day}`
 }
 
+const ALLOWED_IMAGE_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+])
+
+const MAX_IMAGES_PER_REGISTRO = 30
+
+function normalizeRegistroImages(data) {
+  if (Array.isArray(data)) {
+    return data
+  }
+
+  if (Array.isArray(data?.imagens)) {
+    return data.imagens
+  }
+
+  if (Array.isArray(data?.images)) {
+    return data.images
+  }
+
+  if (Array.isArray(data?.items)) {
+    return data.items
+  }
+
+  return []
+}
+
+function getImageId(image) {
+  return image?.id ?? image?.imagem_id ?? image?.image_id ?? image?.uuid
+}
+
+function getImageUrl(image) {
+  return image?.url || image?.imagem_url || image?.image_url || image?.arquivo_url || image?.path || ''
+}
+
+function getImageFileName(image, fallbackId) {
+  const originalName = image?.nome_arquivo || image?.file_name || image?.filename || image?.nome
+  if (originalName && typeof originalName === 'string') {
+    return originalName
+  }
+
+  return `registro-imagem-${fallbackId || 'arquivo'}.jpg`
+}
+
 function RegistrosPage() {
   const navigate = useNavigate()
   const [currentUser, setCurrentUser] = useState(null)
@@ -147,6 +199,7 @@ function RegistrosPage() {
   const [selectedRegistro, setSelectedRegistro] = useState(null)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [isImagesModalOpen, setIsImagesModalOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [createForm, setCreateForm] = useState({
     data: '',
@@ -154,6 +207,7 @@ function RegistrosPage() {
     usuario_registrador_id: '',
     estaca_inicial: '',
     estaca_final: '',
+    resultado: '',
     tempo_manha: '',
     tempo_tarde: '',
     pista: '',
@@ -167,12 +221,25 @@ function RegistrosPage() {
     usuario_registrador_id: '',
     estaca_inicial: '',
     estaca_final: '',
+    resultado: '',
     tempo_manha: '',
     tempo_tarde: '',
     pista: '',
     lado_pista: '',
     observacao: '',
   })
+  const [filters, setFilters] = useState({
+    data: '',
+    frente_servico_id: '',
+    usuario_id: '',
+  })
+  const [activeFilters, setActiveFilters] = useState({})
+  const [registroImages, setRegistroImages] = useState([])
+  const [isLoadingImages, setIsLoadingImages] = useState(false)
+  const [isUploadingImages, setIsUploadingImages] = useState(false)
+  const [deletingImageId, setDeletingImageId] = useState(null)
+  const [isDownloadingAllImages, setIsDownloadingAllImages] = useState(false)
+  const [downloadingImageId, setDownloadingImageId] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmittingCreate, setIsSubmittingCreate] = useState(false)
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false)
@@ -187,13 +254,13 @@ function RegistrosPage() {
     navigate('/login', { replace: true })
   }
 
-  const loadRegistros = async () => {
+  const loadRegistros = async (filterParams = activeFilters) => {
     if (!token) {
       navigate('/login', { replace: true })
       return
     }
 
-    const registrosData = await listRegistros(token)
+    const registrosData = await listRegistros(token, filterParams)
     setRegistros(normalizeRegistros(registrosData))
   }
 
@@ -215,6 +282,42 @@ function RegistrosPage() {
 
     const usersData = await listUsers(token)
     setUsers(normalizeUsers(usersData))
+  }
+
+  const loadRegistroImages = async (registroId) => {
+    if (!token || !registroId) {
+      setRegistroImages([])
+      return
+    }
+
+    setIsLoadingImages(true)
+    try {
+      const imagesData = await listRegistroImagens(token, registroId)
+      setRegistroImages(normalizeRegistroImages(imagesData))
+    } catch (err) {
+      setRegistroImages([])
+      setError(err.message || 'Nao foi possivel carregar as imagens do registro.')
+    } finally {
+      setIsLoadingImages(false)
+    }
+  }
+
+  const buildFilterPayload = () => {
+    const payload = {}
+
+    if (filters.data.trim()) {
+      payload.data = filters.data
+    }
+
+    if (filters.frente_servico_id.trim()) {
+      payload.frente_servico_id = Number(filters.frente_servico_id)
+    }
+
+    if (filters.usuario_id.trim()) {
+      payload.usuario_id = Number(filters.usuario_id)
+    }
+
+    return payload
   }
 
   useEffect(() => {
@@ -252,6 +355,175 @@ function RegistrosPage() {
     setEditForm((prev) => ({ ...prev, [field]: value }))
   }
 
+  const handleFilterChange = (field, value) => {
+    setFilters((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handleApplyFilters = async () => {
+    setError('')
+    const payload = buildFilterPayload()
+    setActiveFilters(payload)
+
+    try {
+      await loadRegistros(payload)
+    } catch (err) {
+      setError(err.message || 'Nao foi possivel aplicar os filtros.')
+    }
+  }
+
+  const handleClearFilters = async () => {
+    setError('')
+    const emptyFilters = {
+      data: '',
+      frente_servico_id: '',
+      usuario_id: '',
+    }
+    setFilters(emptyFilters)
+    setActiveFilters({})
+
+    try {
+      await loadRegistros({})
+    } catch (err) {
+      setError(err.message || 'Nao foi possivel limpar os filtros.')
+    }
+  }
+
+  const handleUploadImages = async (event) => {
+    const files = Array.from(event.target.files || [])
+
+    if (!selectedRegistro?.id || files.length === 0) {
+      return
+    }
+
+    const invalidFile = files.find((file) => !ALLOWED_IMAGE_TYPES.has(file.type))
+    if (invalidFile) {
+      setError('Formato de imagem invalido. Use jpeg, png, webp, heic ou heif.')
+      event.target.value = ''
+      return
+    }
+
+    if (registroImages.length + files.length > MAX_IMAGES_PER_REGISTRO) {
+      setError(`Limite de ${MAX_IMAGES_PER_REGISTRO} imagens por registro.`)
+      event.target.value = ''
+      return
+    }
+
+    setError('')
+    setSuccess('')
+    setIsUploadingImages(true)
+
+    try {
+      for (const file of files) {
+        await uploadRegistroImagem(token, selectedRegistro.id, file)
+      }
+
+      setSuccess(`${files.length} imagem(ns) anexada(s) com sucesso.`)
+      await loadRegistroImages(selectedRegistro.id)
+    } catch (err) {
+      setError(err.message || 'Nao foi possivel enviar as imagens para o registro.')
+    } finally {
+      setIsUploadingImages(false)
+      event.target.value = ''
+    }
+  }
+
+  const handleDeleteImage = async (imageId) => {
+    if (!selectedRegistro?.id || !imageId) {
+      return
+    }
+
+    setError('')
+    setSuccess('')
+    setDeletingImageId(imageId)
+
+    try {
+      await deleteRegistroImagem(token, selectedRegistro.id, imageId)
+      setSuccess('Imagem removida com sucesso.')
+      await loadRegistroImages(selectedRegistro.id)
+    } catch (err) {
+      setError(err.message || 'Nao foi possivel remover a imagem.')
+    } finally {
+      setDeletingImageId(null)
+    }
+  }
+
+  const triggerDownloadFromBlob = (blob, fileName) => {
+    const objectUrl = window.URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = objectUrl
+    anchor.download = fileName
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    window.URL.revokeObjectURL(objectUrl)
+  }
+
+  const downloadImage = async (image) => {
+    const imageId = getImageId(image)
+    const imageUrl = getImageUrl(image)
+
+    if (!imageUrl) {
+      return
+    }
+
+    const fileName = getImageFileName(image, imageId)
+    const response = await fetch(imageUrl)
+
+    if (!response.ok) {
+      throw new Error('Nao foi possivel baixar a imagem.')
+    }
+
+    const blob = await response.blob()
+    triggerDownloadFromBlob(blob, fileName)
+  }
+
+  const handleDownloadImage = async (image) => {
+    const imageId = getImageId(image)
+    if (!imageId) {
+      return
+    }
+
+    setError('')
+    setSuccess('')
+    setDownloadingImageId(imageId)
+
+    try {
+      await downloadImage(image)
+    } catch (err) {
+      setError(err.message || 'Nao foi possivel baixar a imagem.')
+    } finally {
+      setDownloadingImageId(null)
+    }
+  }
+
+  const handleDownloadAllImages = async () => {
+    const imagesWithUrl = registroImages.filter((image) => Boolean(getImageUrl(image)))
+
+    if (imagesWithUrl.length === 0) {
+      setError('Nao ha imagens disponiveis para download.')
+      return
+    }
+
+    setError('')
+    setSuccess('')
+    setIsDownloadingAllImages(true)
+
+    let successCount = 0
+
+    try {
+      for (const image of imagesWithUrl) {
+        await downloadImage(image)
+        successCount += 1
+      }
+
+      setSuccess(`${successCount} imagem(ns) baixada(s) com sucesso.`)
+    } catch (err) {
+      setError(err.message || 'Nao foi possivel baixar todas as imagens.')
+    } finally {
+      setIsDownloadingAllImages(false)
+    }
+  }
+
   const handleCreateRegistro = async (event) => {
     event.preventDefault()
     setError('')
@@ -277,6 +549,10 @@ function RegistrosPage() {
 
       if (createForm.estaca_final.trim()) {
         payload.estaca_final = Number(createForm.estaca_final)
+      }
+
+      if (createForm.resultado.trim()) {
+        payload.resultado = Number(createForm.resultado)
       }
 
       if (createForm.tempo_manha.trim()) {
@@ -307,6 +583,7 @@ function RegistrosPage() {
         usuario_registrador_id: '',
         estaca_inicial: '',
         estaca_final: '',
+        resultado: '',
         tempo_manha: '',
         tempo_tarde: '',
         pista: '',
@@ -322,6 +599,32 @@ function RegistrosPage() {
     }
   }
 
+  const fillEditFormFromRegistro = (registro) => {
+    setEditForm({
+      id: registro.id,
+      data: toInputDate(registro.data),
+      frente_servico_id: String(registro.frente_servico_id || ''),
+      usuario_registrador_id: registro.usuario_registrador_id
+        ? String(registro.usuario_registrador_id)
+        : '',
+      estaca_inicial:
+        registro.estaca_inicial !== null && registro.estaca_inicial !== undefined
+          ? String(registro.estaca_inicial)
+          : '',
+      estaca_final:
+        registro.estaca_final !== null && registro.estaca_final !== undefined
+          ? String(registro.estaca_final)
+          : '',
+      resultado:
+        registro.resultado !== null && registro.resultado !== undefined ? String(registro.resultado) : '',
+      tempo_manha: registro.tempo_manha || '',
+      tempo_tarde: registro.tempo_tarde || '',
+      pista: registro.pista || '',
+      lado_pista: registro.lado_pista || '',
+      observacao: registro.observacao || '',
+    })
+  }
+
   const handleStartEdit = async (registroId) => {
     setError('')
     setSuccess('')
@@ -329,26 +632,37 @@ function RegistrosPage() {
     try {
       const data = await getRegistroById(token, registroId)
       const registro = normalizeRegistro(data)
-      setEditForm({
-        id: registro.id,
-        data: toInputDate(registro.data),
-        frente_servico_id: String(registro.frente_servico_id || ''),
-        usuario_registrador_id: registro.usuario_registrador_id
-          ? String(registro.usuario_registrador_id)
-          : '',
-        estaca_inicial: registro.estaca_inicial ? String(registro.estaca_inicial) : '',
-        estaca_final: registro.estaca_final ? String(registro.estaca_final) : '',
-        tempo_manha: registro.tempo_manha || '',
-        tempo_tarde: registro.tempo_tarde || '',
-        pista: registro.pista || '',
-        lado_pista: registro.lado_pista || '',
-        observacao: registro.observacao || '',
-      })
+      fillEditFormFromRegistro(registro)
       setSelectedRegistro(registro)
       setIsEditModalOpen(true)
     } catch (err) {
       setError(err.message || 'Nao foi possivel carregar os dados do registro.')
     }
+  }
+
+  const handleStartImages = async (registroId) => {
+    setError('')
+    setSuccess('')
+
+    try {
+      const data = await getRegistroById(token, registroId)
+      const registro = normalizeRegistro(data)
+      setSelectedRegistro(registro)
+      await loadRegistroImages(registro.id)
+      setIsImagesModalOpen(true)
+    } catch (err) {
+      setError(err.message || 'Nao foi possivel carregar as fotos do registro.')
+    }
+  }
+
+  const handleEditFromImagesModal = () => {
+    if (!selectedRegistro) {
+      return
+    }
+
+    fillEditFormFromRegistro(selectedRegistro)
+    setIsImagesModalOpen(false)
+    setIsEditModalOpen(true)
   }
 
   const handleUpdateRegistro = async (event) => {
@@ -383,6 +697,10 @@ function RegistrosPage() {
         payload.estaca_final = Number(editForm.estaca_final)
       }
 
+      if (editForm.resultado.trim()) {
+        payload.resultado = Number(editForm.resultado)
+      }
+
       if (editForm.tempo_manha.trim()) {
         payload.tempo_manha = editForm.tempo_manha
       }
@@ -407,6 +725,7 @@ function RegistrosPage() {
       setSuccess('Registro atualizado com sucesso.')
       setSelectedRegistro(null)
       setIsEditModalOpen(false)
+      setRegistroImages([])
       setEditForm({
         id: null,
         data: '',
@@ -414,6 +733,7 @@ function RegistrosPage() {
         usuario_registrador_id: '',
         estaca_inicial: '',
         estaca_final: '',
+        resultado: '',
         tempo_manha: '',
         tempo_tarde: '',
         pista: '',
@@ -444,6 +764,8 @@ function RegistrosPage() {
       if (selectedRegistro?.id === deleteTarget.id) {
         setSelectedRegistro(null)
         setIsEditModalOpen(false)
+        setIsImagesModalOpen(false)
+        setRegistroImages([])
       }
 
       setDeleteTarget(null)
@@ -457,8 +779,6 @@ function RegistrosPage() {
 
   const getFrenteById = (frenteId) =>
     frentes.find((frente) => String(frente.id) === String(frenteId))
-
-  const getUserById = (userId) => users.find((user) => String(user.id) === String(userId))
 
   const formatDate = (date) => {
     if (!date) return ''
@@ -523,6 +843,69 @@ function RegistrosPage() {
                   </button>
                 </div>
 
+                <div className="mt-4 rounded-xl border border-stone-200 bg-stone-50 p-3">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-semibold text-stone-600">Data</span>
+                      <input
+                        type="date"
+                        value={filters.data}
+                        onChange={(event) => handleFilterChange('data', event.target.value)}
+                        className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-semibold text-stone-600">Frente de servico</span>
+                      <select
+                        value={filters.frente_servico_id}
+                        onChange={(event) => handleFilterChange('frente_servico_id', event.target.value)}
+                        className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
+                      >
+                        <option value="">Todas</option>
+                        {frentes.map((frente) => (
+                          <option key={frente.id} value={frente.id}>
+                            {frente.nome}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-semibold text-stone-600">Usuario</span>
+                      <select
+                        value={filters.usuario_id}
+                        onChange={(event) => handleFilterChange('usuario_id', event.target.value)}
+                        className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
+                      >
+                        <option value="">Todos</option>
+                        {users.map((user) => (
+                          <option key={user.id} value={user.id}>
+                            {user.nome}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <div className="flex items-end gap-2">
+                      <button
+                        type="button"
+                        onClick={handleApplyFilters}
+                        className="rounded-xl bg-[#1C1917] px-4 py-2 text-sm font-semibold text-white hover:bg-stone-800"
+                      >
+                        Filtrar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleClearFilters}
+                        className="rounded-xl border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+                      >
+                        Limpar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="mt-4 overflow-x-auto">
                   <table className="min-w-full border-separate border-spacing-y-2 text-sm">
                     <thead>
@@ -544,15 +927,28 @@ function RegistrosPage() {
                             {getFrenteById(registro.frente_servico_id)?.nome || `Frente #${registro.frente_servico_id}`}
                           </td>
                           <td className="px-3 py-2">
-                            {registro.estaca_inicial && registro.estaca_final
-                              ? `${registro.estaca_inicial.toFixed(1)} - ${registro.estaca_final.toFixed(1)}`
+                            {registro.estaca_inicial !== null &&
+                            registro.estaca_inicial !== undefined &&
+                            registro.estaca_final !== null &&
+                            registro.estaca_final !== undefined
+                              ? `${Number(registro.estaca_inicial).toFixed(1)} - ${Number(registro.estaca_final).toFixed(1)}`
                               : '-'}
                           </td>
                           <td className="px-3 py-2 font-semibold">
-                            {registro.resultado ? `${registro.resultado.toFixed(2)} m` : '-'}
+                            {registro.resultado !== null && registro.resultado !== undefined
+                              ? `${Number(registro.resultado).toFixed(2)} m`
+                              : '-'}
                           </td>
                           <td className="rounded-r-xl px-3 py-2">
                             <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleStartImages(registro.id)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                              >
+                                <Images size={14} />
+                                Visualizar fotos
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => handleStartEdit(registro.id)}
@@ -666,6 +1062,18 @@ function RegistrosPage() {
               </label>
 
               <label className="block">
+                <span className="mb-1 block text-xs font-semibold text-stone-600">Resultado (m)</span>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={createForm.resultado}
+                  onChange={(event) => handleCreateChange('resultado', event.target.value)}
+                  className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
+                  placeholder="Opcional - calculado automaticamente"
+                />
+              </label>
+
+              <label className="block">
                 <span className="mb-1 block text-xs font-semibold text-stone-600">Tempo (manha)</span>
                 <select
                   value={createForm.tempo_manha}
@@ -701,8 +1109,8 @@ function RegistrosPage() {
                   className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
                 >
                   <option value="">-</option>
-                  <option value="direita">Direita</option>
-                  <option value="esquerda">Esquerda</option>
+                  <option value="direito">Direito</option>
+                  <option value="esquerdo">Esquerdo</option>
                 </select>
               </label>
 
@@ -714,8 +1122,8 @@ function RegistrosPage() {
                   className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
                 >
                   <option value="">-</option>
-                  <option value="direita">Direita</option>
-                  <option value="esquerda">Esquerda</option>
+                  <option value="direito">Direito</option>
+                  <option value="esquerdo">Esquerdo</option>
                 </select>
               </label>
             </div>
@@ -760,6 +1168,7 @@ function RegistrosPage() {
           onClose={() => {
             setIsEditModalOpen(false)
             setSelectedRegistro(null)
+            setRegistroImages([])
           }}
         >
           <form onSubmit={handleUpdateRegistro} className="grid gap-3 pb-4">
@@ -832,6 +1241,18 @@ function RegistrosPage() {
               </label>
 
               <label className="block">
+                <span className="mb-1 block text-xs font-semibold text-stone-600">Resultado (m)</span>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={editForm.resultado}
+                  onChange={(event) => handleEditChange('resultado', event.target.value)}
+                  className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
+                  placeholder="Opcional - calculado automaticamente"
+                />
+              </label>
+
+              <label className="block">
                 <span className="mb-1 block text-xs font-semibold text-stone-600">Tempo (manha)</span>
                 <select
                   value={editForm.tempo_manha}
@@ -867,8 +1288,8 @@ function RegistrosPage() {
                   className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
                 >
                   <option value="">-</option>
-                  <option value="direita">Direita</option>
-                  <option value="esquerda">Esquerda</option>
+                  <option value="direito">Direito</option>
+                  <option value="esquerdo">Esquerdo</option>
                 </select>
               </label>
 
@@ -880,8 +1301,8 @@ function RegistrosPage() {
                   className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
                 >
                   <option value="">-</option>
-                  <option value="direita">Direita</option>
-                  <option value="esquerda">Esquerda</option>
+                  <option value="direito">Direito</option>
+                  <option value="esquerdo">Esquerdo</option>
                 </select>
               </label>
             </div>
@@ -912,6 +1333,7 @@ function RegistrosPage() {
                 onClick={() => {
                   setIsEditModalOpen(false)
                   setSelectedRegistro(null)
+                  setRegistroImages([])
                 }}
                 className="rounded-xl border border-stone-300 px-4 py-2.5 text-sm font-semibold text-stone-700 hover:bg-stone-100"
               >
@@ -919,6 +1341,147 @@ function RegistrosPage() {
               </button>
             </div>
           </form>
+        </ModalShell>
+      )}
+
+      {isImagesModalOpen && selectedRegistro && (
+        <ModalShell
+          title={`Fotos do registro #${selectedRegistro.id}`}
+          icon={<Images size={18} className="text-blue-600" />}
+          onClose={() => {
+            setIsImagesModalOpen(false)
+            setSelectedRegistro(null)
+            setRegistroImages([])
+          }}
+        >
+          <section className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-stone-800">Imagens do registro</p>
+                <p className="text-xs text-stone-600">
+                  {registroImages.length}/{MAX_IMAGES_PER_REGISTRO} imagem(ns)
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleDownloadAllImages}
+                  disabled={isDownloadingAllImages || isLoadingImages || registroImages.length === 0}
+                  className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isDownloadingAllImages ? <LoaderCircle size={14} className="animate-spin" /> : null}
+                  Baixar todas
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleEditFromImagesModal}
+                  className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-100"
+                >
+                  <Pencil size={14} />
+                  Editar registro
+                </button>
+
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-100">
+                  <ImagePlus size={14} />
+                  Adicionar imagem
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                    multiple
+                    onChange={handleUploadImages}
+                    disabled={isUploadingImages || registroImages.length >= MAX_IMAGES_PER_REGISTRO}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            </div>
+
+            {isLoadingImages && (
+              <div className="mt-3 flex items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-600">
+                <LoaderCircle size={14} className="animate-spin" />
+                Carregando imagens...
+              </div>
+            )}
+
+            {isUploadingImages && (
+              <div className="mt-3 flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-700">
+                <LoaderCircle size={14} className="animate-spin" />
+                Enviando imagens...
+              </div>
+            )}
+
+            {!isLoadingImages && registroImages.length > 0 && (
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {registroImages.map((image) => {
+                  const imageId = getImageId(image)
+                  const imageUrl = getImageUrl(image)
+
+                  return (
+                    <div key={String(imageId || imageUrl)} className="overflow-hidden rounded-lg border border-stone-200 bg-white">
+                      {imageUrl ? (
+                        <img src={imageUrl} alt={`Imagem ${imageId || ''}`} className="h-28 w-full object-cover" />
+                      ) : (
+                        <div className="flex h-28 items-center justify-center bg-stone-100 text-xs text-stone-500">
+                          Sem preview
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between gap-2 px-2 py-2">
+                        <span className="truncate text-[11px] text-stone-600">#{imageId || 's/id'}</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadImage(image)}
+                            disabled={!imageUrl || downloadingImageId === imageId || isDownloadingAllImages}
+                            className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {downloadingImageId === imageId ? (
+                              <LoaderCircle size={12} className="animate-spin" />
+                            ) : null}
+                            Baixar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteImage(imageId)}
+                            disabled={!imageId || deletingImageId === imageId}
+                            className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {deletingImageId === imageId ? (
+                              <LoaderCircle size={12} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={12} />
+                            )}
+                            Remover
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {!isLoadingImages && registroImages.length === 0 && (
+              <p className="mt-3 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-600">
+                Nenhuma imagem anexada a este registro.
+              </p>
+            )}
+          </section>
+
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setIsImagesModalOpen(false)
+                setSelectedRegistro(null)
+                setRegistroImages([])
+              }}
+              className="rounded-xl border border-stone-300 px-4 py-2.5 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+            >
+              Fechar
+            </button>
+          </div>
         </ModalShell>
       )}
 
