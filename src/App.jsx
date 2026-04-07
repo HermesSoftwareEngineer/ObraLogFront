@@ -1,8 +1,11 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
 import AgentInstructionsPage from './pages/AgentInstructionsPage'
+import AlertasPage from './pages/AlertasPage'
 import CadastroPage from './pages/CadastroPage'
 import DashboardPage from './pages/DashboardPage'
+import DiarioObraPage from './pages/DiarioObraPage'
+import DiarioObraVisualizacaoPage from './pages/DiarioObraVisualizacaoPage'
 import FrentesServicoPage from './pages/FrentesServicoPage'
 import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
@@ -31,6 +34,14 @@ function App() {
           }
         />
         <Route
+          path="/dashboard/alertas"
+          element={
+            <ProtectedRoute>
+              <AlertasPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/dashboard/usuarios"
           element={
             <ProtectedRoute>
@@ -51,6 +62,22 @@ function App() {
           element={
             <ProtectedRoute>
               <RegistrosPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/diario-obra"
+          element={
+            <ProtectedRoute>
+              <DiarioObraPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/diario-obra/visualizar"
+          element={
+            <ProtectedRoute>
+              <DiarioObraVisualizacaoPage />
             </ProtectedRoute>
           }
         />

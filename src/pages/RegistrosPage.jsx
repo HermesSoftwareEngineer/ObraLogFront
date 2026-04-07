@@ -152,10 +152,61 @@ const ALLOWED_IMAGE_TYPES = new Set([
 ])
 
 const MAX_IMAGES_PER_REGISTRO = 30
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000').replace(/\/+$/, '')
+const API_PREFIX = '/api/v1'
+
+function resolveImageUrl(imageUrl) {
+  if (!imageUrl || typeof imageUrl !== 'string') {
+    return ''
+  }
+
+  const normalizedUrl = imageUrl.trim()
+  if (!normalizedUrl) {
+    return ''
+  }
+
+  if (/^(https?:|blob:|data:)/i.test(normalizedUrl)) {
+    return normalizedUrl
+  }
+
+  if (normalizedUrl.startsWith('/api/')) {
+    return `${API_BASE_URL}${normalizedUrl}`
+  }
+
+  if (normalizedUrl.startsWith('/backend/uploads/')) {
+    return `${API_BASE_URL}${normalizedUrl}`
+  }
+
+  if (normalizedUrl.startsWith('/uploads/')) {
+    return `${API_BASE_URL}${normalizedUrl}`
+  }
+
+  if (normalizedUrl.startsWith('api/')) {
+    return `${API_BASE_URL}/${normalizedUrl}`
+  }
+
+  if (normalizedUrl.startsWith('backend/uploads/')) {
+    return `${API_BASE_URL}/${normalizedUrl}`
+  }
+
+  if (normalizedUrl.startsWith('uploads/')) {
+    return `${API_BASE_URL}/${normalizedUrl}`
+  }
+
+  if (normalizedUrl.startsWith('/')) {
+    return `${API_BASE_URL}${API_PREFIX}${normalizedUrl}`
+  }
+
+  return `${API_BASE_URL}${API_PREFIX}/${normalizedUrl}`
+}
 
 function normalizeRegistroImages(data) {
   if (Array.isArray(data)) {
     return data
+  }
+
+  if (Array.isArray(data?.data)) {
+    return data.data
   }
 
   if (Array.isArray(data?.imagens)) {
@@ -178,7 +229,34 @@ function getImageId(image) {
 }
 
 function getImageUrl(image) {
-  return image?.url || image?.imagem_url || image?.image_url || image?.arquivo_url || image?.path || ''
+  const directUrl = (
+    image?.url ||
+    image?.imagem_url ||
+    image?.image_url ||
+    image?.arquivo_url ||
+    image?.path ||
+    image?.imagem ||
+    image?.file_url ||
+    image?.download_url
+  )
+
+  if (directUrl) {
+    return directUrl
+  }
+
+  return (
+    image?.arquivo?.url ||
+    image?.arquivo?.path ||
+    image?.arquivo?.download_url ||
+    image?.external_url ||
+    image?.links?.download ||
+    image?.links?.preview ||
+    image?.s3_url ||
+    image?.presigned_url ||
+    image?.signed_url ||
+    image?.storage_path ||
+    ''
+  )
 }
 
 function getImageFileName(image, fallbackId) {
@@ -188,6 +266,15 @@ function getImageFileName(image, fallbackId) {
   }
 
   return `registro-imagem-${fallbackId || 'arquivo'}.jpg`
+}
+
+function isDirectAssetUrl(imageUrl) {
+  if (!imageUrl) {
+    return false
+  }
+
+  const resolvedUrl = resolveImageUrl(imageUrl)
+  return /\/backend\/uploads\//i.test(resolvedUrl) || /\/uploads\//i.test(resolvedUrl)
 }
 
 function RegistrosPage() {
@@ -236,6 +323,7 @@ function RegistrosPage() {
   const [activeFilters, setActiveFilters] = useState({})
   const [registroImages, setRegistroImages] = useState([])
   const [isLoadingImages, setIsLoadingImages] = useState(false)
+  const [openingImagesRegistroId, setOpeningImagesRegistroId] = useState(null)
   const [isUploadingImages, setIsUploadingImages] = useState(false)
   const [deletingImageId, setDeletingImageId] = useState(null)
   const [isDownloadingAllImages, setIsDownloadingAllImages] = useState(false)
@@ -248,6 +336,75 @@ function RegistrosPage() {
   const [success, setSuccess] = useState('')
 
   const token = useMemo(() => getAuthToken(), [])
+
+  const revokeImagePreviews = (images) => {
+    images.forEach((image) => {
+      const previewUrl = image?._previewObjectUrl
+      if (previewUrl && typeof previewUrl === 'string' && previewUrl.startsWith('blob:')) {
+        window.URL.revokeObjectURL(previewUrl)
+      }
+    })
+  }
+
+  const clearRegistroImages = () => {
+    setRegistroImages((previousImages) => {
+      revokeImagePreviews(previousImages)
+      return []
+    })
+  }
+
+  const fetchImageBlob = async (imageUrl) => {
+    const resolvedUrl = resolveImageUrl(imageUrl)
+
+    if (!resolvedUrl) {
+      throw new Error('URL da imagem invalida.')
+    }
+
+    const response = await fetch(resolvedUrl)
+
+    if ((response.status === 401 || response.status === 403) && token) {
+      const authenticatedResponse = await fetch(resolvedUrl, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (!authenticatedResponse.ok) {
+        throw new Error('Nao foi possivel carregar a imagem.')
+      }
+
+      return authenticatedResponse.blob()
+    }
+
+    if (!response.ok) {
+      throw new Error('Nao foi possivel carregar a imagem.')
+    }
+
+    return response.blob()
+  }
+
+  const hydrateImagesWithPreview = async (images) => {
+    const imagesWithPreview = await Promise.all(
+      images.map(async (image) => {
+        const imageUrl = getImageUrl(image)
+        if (!imageUrl || isDirectAssetUrl(imageUrl)) {
+          return image
+        }
+
+        try {
+          const blob = await fetchImageBlob(imageUrl)
+          return {
+            ...image,
+            _previewObjectUrl: window.URL.createObjectURL(blob),
+          }
+        } catch {
+          return image
+        }
+      })
+    )
+
+    return imagesWithPreview
+  }
 
   const handleLogout = () => {
     clearAuthSession()
@@ -286,16 +443,22 @@ function RegistrosPage() {
 
   const loadRegistroImages = async (registroId) => {
     if (!token || !registroId) {
-      setRegistroImages([])
+      clearRegistroImages()
       return
     }
 
     setIsLoadingImages(true)
     try {
       const imagesData = await listRegistroImagens(token, registroId)
-      setRegistroImages(normalizeRegistroImages(imagesData))
+      const normalizedImages = normalizeRegistroImages(imagesData)
+
+      const imagesWithPreview = await hydrateImagesWithPreview(normalizedImages)
+      setRegistroImages((previousImages) => {
+        revokeImagePreviews(previousImages)
+        return imagesWithPreview
+      })
     } catch (err) {
-      setRegistroImages([])
+      clearRegistroImages()
       setError(err.message || 'Nao foi possivel carregar as imagens do registro.')
     } finally {
       setIsLoadingImages(false)
@@ -467,13 +630,7 @@ function RegistrosPage() {
     }
 
     const fileName = getImageFileName(image, imageId)
-    const response = await fetch(imageUrl)
-
-    if (!response.ok) {
-      throw new Error('Nao foi possivel baixar a imagem.')
-    }
-
-    const blob = await response.blob()
+    const blob = await fetchImageBlob(imageUrl)
     triggerDownloadFromBlob(blob, fileName)
   }
 
@@ -641,8 +798,13 @@ function RegistrosPage() {
   }
 
   const handleStartImages = async (registroId) => {
+    if (!registroId || openingImagesRegistroId === registroId) {
+      return
+    }
+
     setError('')
     setSuccess('')
+    setOpeningImagesRegistroId(registroId)
 
     try {
       const data = await getRegistroById(token, registroId)
@@ -652,6 +814,8 @@ function RegistrosPage() {
       setIsImagesModalOpen(true)
     } catch (err) {
       setError(err.message || 'Nao foi possivel carregar as fotos do registro.')
+    } finally {
+      setOpeningImagesRegistroId(null)
     }
   }
 
@@ -725,7 +889,7 @@ function RegistrosPage() {
       setSuccess('Registro atualizado com sucesso.')
       setSelectedRegistro(null)
       setIsEditModalOpen(false)
-      setRegistroImages([])
+      clearRegistroImages()
       setEditForm({
         id: null,
         data: '',
@@ -765,7 +929,7 @@ function RegistrosPage() {
         setSelectedRegistro(null)
         setIsEditModalOpen(false)
         setIsImagesModalOpen(false)
-        setRegistroImages([])
+        clearRegistroImages()
       }
 
       setDeleteTarget(null)
@@ -944,9 +1108,14 @@ function RegistrosPage() {
                               <button
                                 type="button"
                                 onClick={() => handleStartImages(registro.id)}
+                                disabled={openingImagesRegistroId === registro.id}
                                 className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
                               >
-                                <Images size={14} />
+                                {openingImagesRegistroId === registro.id ? (
+                                  <LoaderCircle size={14} className="animate-spin" />
+                                ) : (
+                                  <Images size={14} />
+                                )}
                                 Visualizar fotos
                               </button>
                               <button
@@ -1168,7 +1337,7 @@ function RegistrosPage() {
           onClose={() => {
             setIsEditModalOpen(false)
             setSelectedRegistro(null)
-            setRegistroImages([])
+            clearRegistroImages()
           }}
         >
           <form onSubmit={handleUpdateRegistro} className="grid gap-3 pb-4">
@@ -1333,7 +1502,7 @@ function RegistrosPage() {
                 onClick={() => {
                   setIsEditModalOpen(false)
                   setSelectedRegistro(null)
-                  setRegistroImages([])
+                  clearRegistroImages()
                 }}
                 className="rounded-xl border border-stone-300 px-4 py-2.5 text-sm font-semibold text-stone-700 hover:bg-stone-100"
               >
@@ -1351,7 +1520,7 @@ function RegistrosPage() {
           onClose={() => {
             setIsImagesModalOpen(false)
             setSelectedRegistro(null)
-            setRegistroImages([])
+            clearRegistroImages()
           }}
         >
           <section className="rounded-xl border border-stone-200 bg-stone-50 p-3">
@@ -1417,11 +1586,12 @@ function RegistrosPage() {
                 {registroImages.map((image) => {
                   const imageId = getImageId(image)
                   const imageUrl = getImageUrl(image)
+                  const imageSrc = image._previewObjectUrl || resolveImageUrl(imageUrl)
 
                   return (
                     <div key={String(imageId || imageUrl)} className="overflow-hidden rounded-lg border border-stone-200 bg-white">
-                      {imageUrl ? (
-                        <img src={imageUrl} alt={`Imagem ${imageId || ''}`} className="h-28 w-full object-cover" />
+                      {imageSrc ? (
+                        <img src={imageSrc} alt={`Imagem ${imageId || ''}`} className="h-28 w-full object-cover" />
                       ) : (
                         <div className="flex h-28 items-center justify-center bg-stone-100 text-xs text-stone-500">
                           Sem preview
@@ -1475,7 +1645,7 @@ function RegistrosPage() {
               onClick={() => {
                 setIsImagesModalOpen(false)
                 setSelectedRegistro(null)
-                setRegistroImages([])
+                clearRegistroImages()
               }}
               className="rounded-xl border border-stone-300 px-4 py-2.5 text-sm font-semibold text-stone-700 hover:bg-stone-100"
             >

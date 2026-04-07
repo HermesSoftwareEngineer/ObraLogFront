@@ -13,8 +13,9 @@ import { getStoredUser } from '../services/authStorage'
 const mainItems = [
   { label: 'Dashboard', icon: LayoutDashboard, to: '/dashboard' },
   { label: 'Registros', icon: FileText, to: '/dashboard/registros' },
+  { label: 'Diario de Obra', icon: FileText, to: '/dashboard/diario-obra' },
   { label: 'Frentes', icon: BriefcaseBusiness, to: '/dashboard/frentes-servico' },
-  { label: 'Alertas', icon: Bell, disabled: true },
+  { label: 'Alertas', icon: Bell, to: '/dashboard/alertas' },
 ]
 
 function SidebarItem({ item }) {
