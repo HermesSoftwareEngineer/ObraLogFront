@@ -8,7 +8,6 @@ import DiarioObraPage from './pages/DiarioObraPage'
 import DiarioObraVisualizacaoPage from './pages/DiarioObraVisualizacaoPage'
 import FrentesServicoPage from './pages/FrentesServicoPage'
 import LandingPage from './pages/LandingPage'
-import LancamentosPage from './pages/LancamentosPage'
 import LoginPage from './pages/LoginPage'
 import MensagensCampoPage from './pages/MensagensCampoPage'
 import RegistrosPage from './pages/RegistrosPage'
@@ -65,14 +64,6 @@ function App() {
           element={
             <ProtectedRoute>
               <MensagensCampoPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/dashboard/lancamentos"
-          element={
-            <ProtectedRoute>
-              <LancamentosPage />
             </ProtectedRoute>
           }
         />

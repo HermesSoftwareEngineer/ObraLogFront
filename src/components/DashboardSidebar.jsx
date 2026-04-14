@@ -17,7 +17,6 @@ import { hasAnyLevelAccess } from '../services/accessControl'
 const mainItems = [
   { label: 'Dashboard', icon: LayoutDashboard, to: '/dashboard' },
   { label: 'Mensagens de Campo', icon: MessageSquare, to: '/dashboard/mensagens-campo' },
-  { label: 'Lancamentos', icon: ClipboardList, to: '/dashboard/lancamentos' },
   { label: 'Registros', icon: FileText, to: '/dashboard/registros' },
   {
     label: 'Auditoria Registros',

@@ -34,16 +34,10 @@ Objetivo: validar fluxos criticos apos mudancas de contrato API e UX.
 - [ ] GET /api/v1/mensagens-campo com limit respeita faixa 1..200
 - [ ] GET /api/v1/mensagens-campo/{id} exibe detalhe
 
-## Lancamentos Operacionais
-- [ ] GET /api/v1/lancamentos lista lancamentos
-- [ ] POST /api/v1/lancamentos cria rascunho
-- [ ] PATCH /api/v1/lancamentos/{id} atualiza status/metadados
-- [ ] POST /api/v1/lancamentos/{id}/itens adiciona item
-- [ ] POST /api/v1/lancamentos/{id}/recursos adiciona recurso
-- [ ] POST /api/v1/lancamentos/{id}/midias adiciona midia
-- [ ] POST /api/v1/lancamentos/{id}/confirmar altera status para confirmado
-- [ ] POST /api/v1/lancamentos/{id}/descartar altera status para descartado
-- [ ] POST /api/v1/lancamentos/{id}/consolidar consolida em registro
+## ~~Lancamentos Operacionais~~ [REMOVIDO]
+**Status**: Fluxo descontinuado - endpoints retornam `410 Gone`
+- Funcionalidade migrada para **Registros** e **Status de Registro**
+- Use `/api/v1/registros/*` como alternativa
 
 ## Alertas
 - [ ] GET /api/v1/alertas com filtros status/severity/apenas_nao_lidos
