@@ -11,10 +11,6 @@ function buildAlertasQuery(filters = {}) {
     params.append('severity', filters.severity)
   }
 
-  if (filters.obra_id) {
-    params.append('obra_id', String(filters.obra_id))
-  }
-
   if (typeof filters.apenas_nao_lidos === 'boolean') {
     params.append('apenas_nao_lidos', String(filters.apenas_nao_lidos))
   }

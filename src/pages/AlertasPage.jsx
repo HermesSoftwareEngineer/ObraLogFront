@@ -174,13 +174,10 @@ function AlertasPage() {
     severity: 'media',
     title: '',
     description: '',
-    obra_id: '',
-    obra_nome: '',
     telegram_message_id: '',
     raw_text: '',
     location_detail: '',
     equipment_name: '',
-    equipment_code: '',
     photo_urls: '',
     priority_score: '',
     notified_channels: '',
@@ -188,7 +185,6 @@ function AlertasPage() {
   const [filters, setFilters] = useState({
     status: '',
     severity: '',
-    obra_id: '',
     apenas_nao_lidos: false,
   })
   const [activeFilters, setActiveFilters] = useState({})
@@ -271,10 +267,6 @@ function AlertasPage() {
       payload.severity = filters.severity
     }
 
-    if (filters.obra_id.trim()) {
-      payload.obra_id = Number(filters.obra_id)
-    }
-
     payload.apenas_nao_lidos = Boolean(filters.apenas_nao_lidos)
 
     return payload
@@ -297,7 +289,6 @@ function AlertasPage() {
     const emptyFilters = {
       status: '',
       severity: '',
-      obra_id: '',
       apenas_nao_lidos: false,
     }
     setFilters(emptyFilters)
@@ -332,16 +323,14 @@ function AlertasPage() {
         type: createForm.type.trim(),
         severity: createForm.severity,
         title: createForm.title.trim(),
-        description: createForm.description.trim(),
-        obra_id: Number(createForm.obra_id),
       }
 
-      if (!payload.type || !payload.title || !payload.description || Number.isNaN(payload.obra_id)) {
-        throw new Error('Preencha os campos obrigatorios: tipo, severidade, titulo, descricao e obra_id.')
+      if (!payload.type || !payload.title) {
+        throw new Error('Preencha os campos obrigatorios: tipo, severidade e titulo.')
       }
 
-      if (createForm.obra_nome.trim()) {
-        payload.obra_nome = createForm.obra_nome.trim()
+      if (createForm.description.trim()) {
+        payload.description = createForm.description.trim()
       }
 
       if (createForm.telegram_message_id.trim()) {
@@ -358,10 +347,6 @@ function AlertasPage() {
 
       if (createForm.equipment_name.trim()) {
         payload.equipment_name = createForm.equipment_name.trim()
-      }
-
-      if (createForm.equipment_code.trim()) {
-        payload.equipment_code = createForm.equipment_code.trim()
       }
 
       const photoUrls = parseCsvArray(createForm.photo_urls)
@@ -385,13 +370,10 @@ function AlertasPage() {
         severity: 'media',
         title: '',
         description: '',
-        obra_id: '',
-        obra_nome: '',
         telegram_message_id: '',
         raw_text: '',
         location_detail: '',
         equipment_name: '',
-        equipment_code: '',
         photo_urls: '',
         priority_score: '',
         notified_channels: '',
@@ -582,7 +564,7 @@ function AlertasPage() {
               <section className="rounded-2xl border border-stone-200 bg-white p-4">
                 <h2 className="font-display text-lg font-bold text-stone-900">Filtros</h2>
 
-                <div className="mt-4 grid gap-3 md:grid-cols-4">
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
                   <label className="block">
                     <span className="mb-1 block text-xs font-semibold text-stone-600">Status</span>
                     <select
@@ -613,18 +595,6 @@ function AlertasPage() {
                         </option>
                       ))}
                     </select>
-                  </label>
-
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-semibold text-stone-600">Obra ID</span>
-                    <input
-                      type="number"
-                      min="1"
-                      value={filters.obra_id}
-                      onChange={(event) => handleFilterChange('obra_id', event.target.value)}
-                      placeholder="Ex.: 2"
-                      className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
-                    />
                   </label>
 
                   <label className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-stone-700">
@@ -665,7 +635,6 @@ function AlertasPage() {
                         <th className="px-3 py-2">Titulo</th>
                         <th className="px-3 py-2">Status</th>
                         <th className="px-3 py-2">Severidade</th>
-                        <th className="px-3 py-2">Obra</th>
                         <th className="px-3 py-2">Criado em</th>
                         <th className="px-3 py-2">Acoes</th>
                       </tr>
@@ -681,7 +650,6 @@ function AlertasPage() {
                             <td className="px-3 py-2 font-semibold">{alerta.title || '-'}</td>
                             <td className="px-3 py-2 capitalize">{prettyStatus(alerta.status)}</td>
                             <td className="px-3 py-2 uppercase">{prettySeverity(alerta.severity)}</td>
-                            <td className="px-3 py-2">{alerta.obra_nome || alerta.obra_id || '-'}</td>
                             <td className="px-3 py-2">{formatDate(alerta.created_at)}</td>
                             <td className="rounded-r-xl px-3 py-2">
                               <div className="flex items-center gap-2">
@@ -720,7 +688,7 @@ function AlertasPage() {
 
                       {alertas.length === 0 && (
                         <tr>
-                          <td colSpan={7} className="px-3 py-8 text-center text-stone-500">
+                          <td colSpan={6} className="px-3 py-8 text-center text-stone-500">
                             Nenhum alerta encontrado.
                           </td>
                         </tr>
@@ -779,34 +747,12 @@ function AlertasPage() {
               </label>
 
               <label className="md:col-span-2 block">
-                <span className="mb-1 block text-xs font-semibold text-stone-600">Descricao *</span>
+                <span className="mb-1 block text-xs font-semibold text-stone-600">Descricao</span>
                 <textarea
                   value={createForm.description}
                   onChange={(event) => handleCreateChange('description', event.target.value)}
-                  required
                   rows={2}
                   className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200 resize-none"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-stone-600">Obra ID *</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={createForm.obra_id}
-                  onChange={(event) => handleCreateChange('obra_id', event.target.value)}
-                  required
-                  className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-stone-600">Obra nome</span>
-                <input
-                  value={createForm.obra_nome}
-                  onChange={(event) => handleCreateChange('obra_nome', event.target.value)}
-                  className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
                 />
               </label>
 
@@ -839,14 +785,6 @@ function AlertasPage() {
                 />
               </label>
 
-              <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-stone-600">Codigo equipamento</span>
-                <input
-                  value={createForm.equipment_code}
-                  onChange={(event) => handleCreateChange('equipment_code', event.target.value)}
-                  className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
-                />
-              </label>
 
               <label className="block">
                 <span className="mb-1 block text-xs font-semibold text-stone-600">Priority score</span>

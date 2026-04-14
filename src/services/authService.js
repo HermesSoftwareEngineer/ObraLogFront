@@ -1,9 +1,15 @@
 import { apiRequest } from './apiClient'
 
-export async function registerUser({ nome, email, senha }) {
+export async function registerUser({ nome, email, senha, telefone }) {
+  const body = { nome, email, senha }
+
+  if (telefone) {
+    body.telefone = telefone
+  }
+
   return apiRequest('/auth/register', {
     method: 'POST',
-    body: { nome, email, senha },
+    body,
   })
 }
 

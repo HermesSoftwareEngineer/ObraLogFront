@@ -8,8 +8,11 @@ import DiarioObraPage from './pages/DiarioObraPage'
 import DiarioObraVisualizacaoPage from './pages/DiarioObraVisualizacaoPage'
 import FrentesServicoPage from './pages/FrentesServicoPage'
 import LandingPage from './pages/LandingPage'
+import LancamentosPage from './pages/LancamentosPage'
 import LoginPage from './pages/LoginPage'
+import MensagensCampoPage from './pages/MensagensCampoPage'
 import RegistrosPage from './pages/RegistrosPage'
+import RegistrosAuditoriaPage from './pages/RegistrosAuditoriaPage'
 import UsuariosPage from './pages/UsuariosPage'
 import { getAuthToken } from './services/authStorage'
 
@@ -44,7 +47,7 @@ function App() {
         <Route
           path="/dashboard/usuarios"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute allowedLevels={['administrador']}>
               <UsuariosPage />
             </ProtectedRoute>
           }
@@ -58,10 +61,34 @@ function App() {
           }
         />
         <Route
+          path="/dashboard/mensagens-campo"
+          element={
+            <ProtectedRoute>
+              <MensagensCampoPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/lancamentos"
+          element={
+            <ProtectedRoute>
+              <LancamentosPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/dashboard/registros"
           element={
             <ProtectedRoute>
               <RegistrosPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/registros/auditoria"
+          element={
+            <ProtectedRoute allowedLevels={['gerente']}>
+              <RegistrosAuditoriaPage />
             </ProtectedRoute>
           }
         />
@@ -84,7 +111,7 @@ function App() {
         <Route
           path="/dashboard/agent/instrucoes"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute allowedLevels={['administrador']}>
               <AgentInstructionsPage />
             </ProtectedRoute>
           }

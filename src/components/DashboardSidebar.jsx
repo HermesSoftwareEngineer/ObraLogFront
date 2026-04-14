@@ -2,17 +2,29 @@ import {
   Bot,
   Bell,
   BriefcaseBusiness,
+  ClipboardList,
   FileText,
   LayoutDashboard,
   LogOut,
+  MessageSquare,
+  ScrollText,
   Users,
 } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { getStoredUser } from '../services/authStorage'
+import { hasAnyLevelAccess } from '../services/accessControl'
 
 const mainItems = [
   { label: 'Dashboard', icon: LayoutDashboard, to: '/dashboard' },
+  { label: 'Mensagens de Campo', icon: MessageSquare, to: '/dashboard/mensagens-campo' },
+  { label: 'Lancamentos', icon: ClipboardList, to: '/dashboard/lancamentos' },
   { label: 'Registros', icon: FileText, to: '/dashboard/registros' },
+  {
+    label: 'Auditoria Registros',
+    icon: ScrollText,
+    to: '/dashboard/registros/auditoria',
+    allowedLevels: ['gerente'],
+  },
   { label: 'Diario de Obra', icon: FileText, to: '/dashboard/diario-obra' },
   { label: 'Frentes', icon: BriefcaseBusiness, to: '/dashboard/frentes-servico' },
   { label: 'Alertas', icon: Bell, to: '/dashboard/alertas' },
@@ -52,6 +64,7 @@ function DashboardSidebar({ user, onLogout }) {
   const persistedUser = getStoredUser()
   const effectiveUser = user || persistedUser
   const isAdmin = effectiveUser?.nivel_acesso === 'administrador'
+  const visibleMainItems = mainItems.filter((item) => hasAnyLevelAccess(effectiveUser, item.allowedLevels))
 
   return (
     <aside className="hidden w-72 shrink-0 rounded-3xl border border-stone-200 bg-white p-5 shadow-sm lg:block">
@@ -63,7 +76,7 @@ function DashboardSidebar({ user, onLogout }) {
       </NavLink>
 
       <nav className="space-y-2">
-        {mainItems.map((item) => (
+        {visibleMainItems.map((item) => (
           <SidebarItem key={item.label} item={item} />
         ))}
 

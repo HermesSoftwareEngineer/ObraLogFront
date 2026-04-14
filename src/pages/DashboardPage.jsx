@@ -2,7 +2,7 @@ import { LoaderCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useEffect, useMemo, useState } from 'react'
 import DashboardSidebar from '../components/DashboardSidebar'
-import { generateTelegramLinkCode, getCurrentUser, linkTelegramChatId } from '../services/authService'
+import { getCurrentUser, linkTelegramChatId } from '../services/authService'
 import { clearAuthSession, getAuthToken, getStoredUser } from '../services/authStorage'
 import { getDashboardOverview } from '../services/dashboardService'
 
@@ -12,9 +12,6 @@ function DashboardPage() {
   const [overview, setOverview] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
-  const [telegramCodeData, setTelegramCodeData] = useState(null)
-  const [telegramCodeError, setTelegramCodeError] = useState('')
-  const [isGeneratingTelegramCode, setIsGeneratingTelegramCode] = useState(false)
   const [telegramChatId, setTelegramChatId] = useState('')
   const [telegramLinkError, setTelegramLinkError] = useState('')
   const [telegramLinkSuccess, setTelegramLinkSuccess] = useState('')
@@ -81,30 +78,6 @@ function DashboardPage() {
   const handleLogout = () => {
     clearAuthSession()
     navigate('/login', { replace: true })
-  }
-
-  const handleGenerateMyTelegramCode = async () => {
-    const token = getAuthToken()
-    if (!token || !user?.id) {
-      return
-    }
-
-    setTelegramCodeError('')
-    setTelegramLinkSuccess('')
-    setIsGeneratingTelegramCode(true)
-
-    try {
-      const payload = {
-        user_id: user.id,
-      }
-
-      const data = await generateTelegramLinkCode(token, payload)
-      setTelegramCodeData(data.link_code || null)
-    } catch (err) {
-      setTelegramCodeError(err.message || 'Nao foi possivel gerar codigo do Telegram.')
-    } finally {
-      setIsGeneratingTelegramCode(false)
-    }
   }
 
   const handleLinkTelegram = async (event) => {
@@ -188,42 +161,7 @@ function DashboardPage() {
                 ))}
               </section>
 
-              <section className="mt-8 grid gap-4 lg:grid-cols-2">
-                <article className="rounded-2xl border border-stone-200 bg-white p-5">
-                  <h2 className="font-display text-xl font-bold text-stone-900">Gerar codigo Telegram</h2>
-                  <p className="mt-2 text-sm text-stone-600">
-                    Gere seu codigo para vincular o bot no Telegram.
-                  </p>
-
-                  <div className="mt-4">
-                    <button
-                      type="button"
-                      onClick={handleGenerateMyTelegramCode}
-                      disabled={isGeneratingTelegramCode}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#F97316] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-80"
-                    >
-                      {isGeneratingTelegramCode && <LoaderCircle size={16} className="animate-spin" />}
-                      Gerar codigo
-                    </button>
-                  </div>
-
-                  {telegramCodeError && (
-                    <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                      {telegramCodeError}
-                    </p>
-                  )}
-
-                  {telegramCodeData && (
-                    <div className="mt-4 rounded-xl border border-stone-200 bg-[#F5F5F4] p-4">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-stone-500">Codigo gerado</p>
-                      <p className="mt-1 font-mono text-2xl font-extrabold tracking-wider text-stone-900">
-                        {telegramCodeData.code}
-                      </p>
-                      <p className="mt-2 text-xs text-stone-600">Expira em: {telegramCodeData.expires_at}</p>
-                    </div>
-                  )}
-                </article>
-
+              <section className="mt-8 grid gap-4">
                 <article className="rounded-2xl border border-stone-200 bg-white p-5">
                   <h2 className="font-display text-xl font-bold text-stone-900">Vincular telegram_chat_id</h2>
                   <p className="mt-2 text-sm text-stone-600">

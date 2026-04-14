@@ -154,6 +154,93 @@ const ALLOWED_IMAGE_TYPES = new Set([
 const MAX_IMAGES_PER_REGISTRO = 30
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000').replace(/\/+$/, '')
 const API_PREFIX = '/api/v1'
+const TEMPO_OPTIONS = new Set(['limpo', 'nublado', 'impraticavel'])
+const LADO_PISTA_OPTIONS = new Set(['direito', 'esquerdo'])
+
+function parseRequiredNumber(rawValue, fieldLabel) {
+  const parsedValue = Number(rawValue)
+  if (!Number.isFinite(parsedValue)) {
+    throw new Error(`Campo obrigatorio invalido: ${fieldLabel}.`)
+  }
+
+  return parsedValue
+}
+
+function buildRegistroPayloadFromForm(form) {
+  const requiredFields = [
+    { key: 'data', label: 'Data' },
+    { key: 'frente_servico_id', label: 'Frente de servico' },
+    { key: 'usuario_registrador_id', label: 'Registrador' },
+    { key: 'estaca_inicial', label: 'Estaca inicial' },
+    { key: 'estaca_final', label: 'Estaca final' },
+    { key: 'tempo_manha', label: 'Tempo (manha)' },
+    { key: 'tempo_tarde', label: 'Tempo (tarde)' },
+  ]
+
+  const missingLabels = requiredFields
+    .filter(({ key }) => !String(form[key] ?? '').trim())
+    .map(({ label }) => label)
+
+  if (missingLabels.length > 0) {
+    throw new Error(`Preencha os campos obrigatorios: ${missingLabels.join(', ')}.`)
+  }
+
+  const data = String(form.data).trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) {
+    throw new Error('Data invalida. Use o formato YYYY-MM-DD.')
+  }
+
+  const tempoManha = String(form.tempo_manha).trim()
+  const tempoTarde = String(form.tempo_tarde).trim()
+
+  if (!TEMPO_OPTIONS.has(tempoManha) || !TEMPO_OPTIONS.has(tempoTarde)) {
+    throw new Error('Tempo da manha e da tarde devem ser: limpo, nublado ou impraticavel.')
+  }
+
+  const estacaInicial = parseRequiredNumber(String(form.estaca_inicial).trim(), 'Estaca inicial')
+  const estacaFinal = parseRequiredNumber(String(form.estaca_final).trim(), 'Estaca final')
+
+  if (estacaFinal < estacaInicial) {
+    throw new Error('Estaca final nao pode ser menor que estaca inicial.')
+  }
+
+  const payload = {
+    data,
+    frente_servico_id: parseRequiredNumber(String(form.frente_servico_id).trim(), 'Frente de servico'),
+    usuario_registrador_id: parseRequiredNumber(
+      String(form.usuario_registrador_id).trim(),
+      'Registrador'
+    ),
+    estaca_inicial: estacaInicial,
+    estaca_final: estacaFinal,
+    tempo_manha: tempoManha,
+    tempo_tarde: tempoTarde,
+  }
+
+  const ladoPrincipal = String(form.lado_pista || '').trim() || String(form.pista || '').trim()
+  if (ladoPrincipal) {
+    if (!LADO_PISTA_OPTIONS.has(ladoPrincipal)) {
+      throw new Error('Lado da pista invalido. Use direito ou esquerdo.')
+    }
+
+    payload.lado_pista = ladoPrincipal
+
+    const pistaLegada = String(form.pista || '').trim()
+    if (pistaLegada && !String(form.lado_pista || '').trim()) {
+      payload.pista = pistaLegada
+    }
+  }
+
+  if (String(form.resultado || '').trim()) {
+    payload.resultado = parseRequiredNumber(String(form.resultado).trim(), 'Resultado')
+  }
+
+  if (String(form.observacao || '').trim()) {
+    payload.observacao = String(form.observacao).trim()
+  }
+
+  return payload
+}
 
 function resolveImageUrl(imageUrl) {
   if (!imageUrl || typeof imageUrl !== 'string') {
@@ -688,49 +775,7 @@ function RegistrosPage() {
     setIsSubmittingCreate(true)
 
     try {
-      const payload = {
-        frente_servico_id: Number(createForm.frente_servico_id),
-      }
-
-      if (createForm.data.trim()) {
-        payload.data = createForm.data
-      }
-
-      if (createForm.usuario_registrador_id.trim()) {
-        payload.usuario_registrador_id = Number(createForm.usuario_registrador_id)
-      }
-
-      if (createForm.estaca_inicial.trim()) {
-        payload.estaca_inicial = Number(createForm.estaca_inicial)
-      }
-
-      if (createForm.estaca_final.trim()) {
-        payload.estaca_final = Number(createForm.estaca_final)
-      }
-
-      if (createForm.resultado.trim()) {
-        payload.resultado = Number(createForm.resultado)
-      }
-
-      if (createForm.tempo_manha.trim()) {
-        payload.tempo_manha = createForm.tempo_manha
-      }
-
-      if (createForm.tempo_tarde.trim()) {
-        payload.tempo_tarde = createForm.tempo_tarde
-      }
-
-      if (createForm.pista.trim()) {
-        payload.pista = createForm.pista
-      }
-
-      if (createForm.lado_pista.trim()) {
-        payload.lado_pista = createForm.lado_pista
-      }
-
-      if (createForm.observacao.trim()) {
-        payload.observacao = createForm.observacao
-      }
+      const payload = buildRegistroPayloadFromForm(createForm)
 
       await createRegistro(token, payload)
       setSuccess('Registro cadastrado com sucesso.')
@@ -841,49 +886,7 @@ function RegistrosPage() {
     setIsSubmittingEdit(true)
 
     try {
-      const payload = {
-        frente_servico_id: Number(editForm.frente_servico_id),
-      }
-
-      if (editForm.data.trim()) {
-        payload.data = editForm.data
-      }
-
-      if (editForm.usuario_registrador_id.trim()) {
-        payload.usuario_registrador_id = Number(editForm.usuario_registrador_id)
-      }
-
-      if (editForm.estaca_inicial.trim()) {
-        payload.estaca_inicial = Number(editForm.estaca_inicial)
-      }
-
-      if (editForm.estaca_final.trim()) {
-        payload.estaca_final = Number(editForm.estaca_final)
-      }
-
-      if (editForm.resultado.trim()) {
-        payload.resultado = Number(editForm.resultado)
-      }
-
-      if (editForm.tempo_manha.trim()) {
-        payload.tempo_manha = editForm.tempo_manha
-      }
-
-      if (editForm.tempo_tarde.trim()) {
-        payload.tempo_tarde = editForm.tempo_tarde
-      }
-
-      if (editForm.pista.trim()) {
-        payload.pista = editForm.pista
-      }
-
-      if (editForm.lado_pista.trim()) {
-        payload.lado_pista = editForm.lado_pista
-      }
-
-      if (editForm.observacao.trim()) {
-        payload.observacao = editForm.observacao
-      }
+      const payload = buildRegistroPayloadFromForm(editForm)
 
       await updateRegistro(token, editForm.id, payload)
       setSuccess('Registro atualizado com sucesso.')
@@ -1181,20 +1184,22 @@ function RegistrosPage() {
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-stone-600">Data</span>
+                <span className="mb-1 block text-xs font-semibold text-stone-600">Data *</span>
                 <input
                   type="date"
                   value={createForm.data}
                   onChange={(event) => handleCreateChange('data', event.target.value)}
+                  required
                   className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
                 />
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-stone-600">Registrador</span>
+                <span className="mb-1 block text-xs font-semibold text-stone-600">Registrador *</span>
                 <select
                   value={createForm.usuario_registrador_id}
                   onChange={(event) => handleCreateChange('usuario_registrador_id', event.target.value)}
+                  required
                   className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
                 >
                   <option value="">Nenhum registrador</option>
@@ -1207,24 +1212,26 @@ function RegistrosPage() {
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-stone-600">Estaca Inicial</span>
+                <span className="mb-1 block text-xs font-semibold text-stone-600">Estaca Inicial *</span>
                 <input
                   type="number"
                   step="0.1"
                   value={createForm.estaca_inicial}
                   onChange={(event) => handleCreateChange('estaca_inicial', event.target.value)}
+                  required
                   className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
                   placeholder="0.0"
                 />
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-stone-600">Estaca Final</span>
+                <span className="mb-1 block text-xs font-semibold text-stone-600">Estaca Final *</span>
                 <input
                   type="number"
                   step="0.1"
                   value={createForm.estaca_final}
                   onChange={(event) => handleCreateChange('estaca_final', event.target.value)}
+                  required
                   className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
                   placeholder="0.0"
                 />
@@ -1243,10 +1250,11 @@ function RegistrosPage() {
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-stone-600">Tempo (manha)</span>
+                <span className="mb-1 block text-xs font-semibold text-stone-600">Tempo (manha) *</span>
                 <select
                   value={createForm.tempo_manha}
                   onChange={(event) => handleCreateChange('tempo_manha', event.target.value)}
+                  required
                   className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
                 >
                   <option value="">-</option>
@@ -1257,10 +1265,11 @@ function RegistrosPage() {
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-stone-600">Tempo (tarde)</span>
+                <span className="mb-1 block text-xs font-semibold text-stone-600">Tempo (tarde) *</span>
                 <select
                   value={createForm.tempo_tarde}
                   onChange={(event) => handleCreateChange('tempo_tarde', event.target.value)}
+                  required
                   className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
                 >
                   <option value="">-</option>
@@ -1271,7 +1280,7 @@ function RegistrosPage() {
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-stone-600">Pista</span>
+                <span className="mb-1 block text-xs font-semibold text-stone-600">Pista (compatibilidade legada)</span>
                 <select
                   value={createForm.pista}
                   onChange={(event) => handleCreateChange('pista', event.target.value)}
@@ -1284,7 +1293,7 @@ function RegistrosPage() {
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-stone-600">Lado da Pista</span>
+                <span className="mb-1 block text-xs font-semibold text-stone-600">Lado da Pista (principal)</span>
                 <select
                   value={createForm.lado_pista}
                   onChange={(event) => handleCreateChange('lado_pista', event.target.value)}
@@ -1360,20 +1369,22 @@ function RegistrosPage() {
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-stone-600">Data</span>
+                <span className="mb-1 block text-xs font-semibold text-stone-600">Data *</span>
                 <input
                   type="date"
                   value={editForm.data}
                   onChange={(event) => handleEditChange('data', event.target.value)}
+                  required
                   className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
                 />
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-stone-600">Registrador</span>
+                <span className="mb-1 block text-xs font-semibold text-stone-600">Registrador *</span>
                 <select
                   value={editForm.usuario_registrador_id}
                   onChange={(event) => handleEditChange('usuario_registrador_id', event.target.value)}
+                  required
                   className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
                 >
                   <option value="">Nenhum registrador</option>
@@ -1386,24 +1397,26 @@ function RegistrosPage() {
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-stone-600">Estaca Inicial</span>
+                <span className="mb-1 block text-xs font-semibold text-stone-600">Estaca Inicial *</span>
                 <input
                   type="number"
                   step="0.1"
                   value={editForm.estaca_inicial}
                   onChange={(event) => handleEditChange('estaca_inicial', event.target.value)}
+                  required
                   className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
                   placeholder="0.0"
                 />
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-stone-600">Estaca Final</span>
+                <span className="mb-1 block text-xs font-semibold text-stone-600">Estaca Final *</span>
                 <input
                   type="number"
                   step="0.1"
                   value={editForm.estaca_final}
                   onChange={(event) => handleEditChange('estaca_final', event.target.value)}
+                  required
                   className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
                   placeholder="0.0"
                 />
@@ -1422,10 +1435,11 @@ function RegistrosPage() {
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-stone-600">Tempo (manha)</span>
+                <span className="mb-1 block text-xs font-semibold text-stone-600">Tempo (manha) *</span>
                 <select
                   value={editForm.tempo_manha}
                   onChange={(event) => handleEditChange('tempo_manha', event.target.value)}
+                  required
                   className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
                 >
                   <option value="">-</option>
@@ -1436,10 +1450,11 @@ function RegistrosPage() {
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-stone-600">Tempo (tarde)</span>
+                <span className="mb-1 block text-xs font-semibold text-stone-600">Tempo (tarde) *</span>
                 <select
                   value={editForm.tempo_tarde}
                   onChange={(event) => handleEditChange('tempo_tarde', event.target.value)}
+                  required
                   className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
                 >
                   <option value="">-</option>
@@ -1450,7 +1465,7 @@ function RegistrosPage() {
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-stone-600">Pista</span>
+                <span className="mb-1 block text-xs font-semibold text-stone-600">Pista (compatibilidade legada)</span>
                 <select
                   value={editForm.pista}
                   onChange={(event) => handleEditChange('pista', event.target.value)}
@@ -1463,7 +1478,7 @@ function RegistrosPage() {
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-stone-600">Lado da Pista</span>
+                <span className="mb-1 block text-xs font-semibold text-stone-600">Lado da Pista (principal)</span>
                 <select
                   value={editForm.lado_pista}
                   onChange={(event) => handleEditChange('lado_pista', event.target.value)}

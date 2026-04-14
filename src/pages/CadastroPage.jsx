@@ -9,6 +9,7 @@ function CadastroPage() {
   const navigate = useNavigate()
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
   const [companyName, setCompanyName] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -39,6 +40,7 @@ function CadastroPage() {
         nome: fullName,
         email,
         senha: password,
+        telefone: phone.trim() || undefined,
       })
 
       saveAuthSession(data.token, {
@@ -96,6 +98,17 @@ function CadastroPage() {
               required
               className="w-full rounded-xl border border-stone-300 px-4 py-3 text-sm outline-none transition focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
               placeholder="Construtora Exemplo"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-sm font-semibold text-stone-700">Telefone (opcional)</span>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(event) => setPhone(event.target.value)}
+              className="w-full rounded-xl border border-stone-300 px-4 py-3 text-sm outline-none transition focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
+              placeholder="(11) 99999-9999"
             />
           </label>
 
