@@ -1,3 +1,5 @@
+import { clearAuthSession } from './authStorage'
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
 const API_PREFIX = '/api/v1'
 
@@ -61,6 +63,11 @@ export async function apiRequest(path, options = {}) {
     const data = await parseResponseBody(response)
 
     if (!response.ok) {
+      // Handle 401 Unauthorized - session expired
+      if (response.status === 401) {
+        clearAuthSession()
+        window.location.href = '/login'
+      }
       throw new ApiError(getApiErrorMessage(data, response.status), response.status)
     }
 
