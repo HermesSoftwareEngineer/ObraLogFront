@@ -1,7 +1,7 @@
 import { Download, Eye, LoaderCircle, Search } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import DashboardSidebar from '../components/DashboardSidebar'
+import DashboardShell from '../components/DashboardShell'
 import { getCurrentUser } from '../services/authService'
 import { clearAuthSession, getAuthToken } from '../services/authStorage'
 import {
@@ -380,11 +380,7 @@ function DiarioObraPage() {
   }, [queryType, diarioDia, diarioPeriodo])
 
   return (
-    <div className="min-h-screen bg-[#F5F5F4] text-[#292524]">
-      <div className="mx-auto flex items-start max-w-7xl gap-4 p-4 sm:p-6 lg:gap-6 lg:p-8">
-        <DashboardSidebar user={currentUser} onLogout={handleLogout} />
-
-        <main className="w-full rounded-3xl border border-stone-200 bg-white p-5 shadow-sm sm:p-8">
+    <DashboardShell user={currentUser} onLogout={handleLogout}>
           <header className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <p className="text-sm font-semibold uppercase tracking-wider text-[#F97316]">Relatorios</p>
@@ -648,9 +644,7 @@ function DiarioObraPage() {
               </section>
             </div>
           )}
-        </main>
-      </div>
-    </div>
+    </DashboardShell>
   )
 }
 

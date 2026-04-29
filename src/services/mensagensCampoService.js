@@ -1,34 +1,70 @@
 import { apiRequest } from './apiClient'
 
-function buildMensagensCampoQuery(filters = {}) {
+function appendPaginationParams(params, options = {}) {
+  if (Number.isFinite(options.page) && options.page >= 1) {
+    params.append('page', String(options.page))
+  }
+
+  if (Number.isFinite(options.per_page) && options.per_page >= 1) {
+    params.append('per_page', String(options.per_page))
+  }
+}
+
+function buildConversasQuery(options = {}) {
   const params = new URLSearchParams()
-
-  if (filters.status) {
-    params.append('status', filters.status)
-  }
-
-  if (filters.telegram_chat_id) {
-    params.append('telegram_chat_id', String(filters.telegram_chat_id))
-  }
-
-  if (filters.limit) {
-    params.append('limit', String(filters.limit))
-  }
+  appendPaginationParams(params, options)
 
   const queryString = params.toString()
-  return queryString ? `/mensagens-campo?${queryString}` : '/mensagens-campo'
+  return queryString ? `/chat/conversas?${queryString}` : '/chat/conversas'
 }
 
-export async function listMensagensCampo(token, filters = {}) {
-  return apiRequest(buildMensagensCampoQuery(filters), {
+function buildMensagensQuery(chatId, options = {}) {
+  const params = new URLSearchParams()
+  params.append('chat_id', String(chatId))
+  appendPaginationParams(params, options)
+
+  const queryString = params.toString()
+  return `/chat/mensagens?${queryString}`
+}
+
+function buildMensagensLegacyQuery(chatId, options = {}) {
+  const params = new URLSearchParams()
+  appendPaginationParams(params, options)
+
+  const queryString = params.toString()
+  return queryString
+    ? `/chat/conversas/${chatId}/mensagens?${queryString}`
+    : `/chat/conversas/${chatId}/mensagens`
+}
+
+export async function listChatConversas(token, options = {}) {
+  return apiRequest(buildConversasQuery(options), {
     method: 'GET',
     token,
   })
 }
 
-export async function getMensagemCampoById(token, mensagemId) {
-  return apiRequest(`/mensagens-campo/${mensagemId}`, {
+export async function listChatMensagens(token, chatId, options = {}) {
+  return apiRequest(buildMensagensQuery(chatId, options), {
     method: 'GET',
     token,
   })
+}
+
+export async function listChatMensagensLegacy(token, chatId, options = {}) {
+  return apiRequest(buildMensagensLegacyQuery(chatId, options), {
+    method: 'GET',
+    token,
+  })
+}
+
+export async function listChatMensagensWithFallback(token, chatId, options = {}) {
+  try {
+    return await listChatMensagens(token, chatId, options)
+  } catch (err) {
+    if (err?.status === 404) {
+      return listChatMensagensLegacy(token, chatId, options)
+    }
+    throw err
+  }
 }

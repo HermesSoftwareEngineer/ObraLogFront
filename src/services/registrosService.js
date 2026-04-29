@@ -80,10 +80,3 @@ export async function deleteRegistroImagem(token, registroId, imageId) {
     token,
   })
 }
-
-export async function listRegistroAuditoria(token, registroId) {
-  return apiRequest(`/registros/${registroId}/auditoria`, {
-    method: 'GET',
-    token,
-  })
-}

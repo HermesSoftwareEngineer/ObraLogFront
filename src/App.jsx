@@ -1,7 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
 import AgentInstructionsPage from './pages/AgentInstructionsPage'
-import AlertasPage from './pages/AlertasPage'
 import CadastroPage from './pages/CadastroPage'
 import DashboardPage from './pages/DashboardPage'
 import DiarioObraPage from './pages/DiarioObraPage'
@@ -10,8 +9,10 @@ import FrentesServicoPage from './pages/FrentesServicoPage'
 import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 import MensagensCampoPage from './pages/MensagensCampoPage'
+import ConfiguracoesPage from './pages/ConfiguracoesPage'
 import RegistrosPage from './pages/RegistrosPage'
-import RegistrosAuditoriaPage from './pages/RegistrosAuditoriaPage'
+import TabelasAuxiliaresPage from './pages/TabelasAuxiliaresPage'
+import TiposAlertaPage from './pages/TiposAlertaPage'
 import UsuariosPage from './pages/UsuariosPage'
 import { getAuthToken } from './services/authStorage'
 
@@ -36,14 +37,6 @@ function App() {
           }
         />
         <Route
-          path="/dashboard/alertas"
-          element={
-            <ProtectedRoute>
-              <AlertasPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
           path="/dashboard/usuarios"
           element={
             <ProtectedRoute allowedLevels={['administrador']}>
@@ -60,26 +53,19 @@ function App() {
           }
         />
         <Route
-          path="/dashboard/mensagens-campo"
+          path="/dashboard/conversas"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute allowedLevels={['administrador']}>
               <MensagensCampoPage />
             </ProtectedRoute>
           }
         />
+        <Route path="/dashboard/mensagens-campo" element={<Navigate to="/dashboard/conversas" replace />} />
         <Route
           path="/dashboard/registros"
           element={
             <ProtectedRoute>
               <RegistrosPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/dashboard/registros/auditoria"
-          element={
-            <ProtectedRoute allowedLevels={['gerente']}>
-              <RegistrosAuditoriaPage />
             </ProtectedRoute>
           }
         />
@@ -104,6 +90,30 @@ function App() {
           element={
             <ProtectedRoute allowedLevels={['administrador']}>
               <AgentInstructionsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/configuracoes"
+          element={
+            <ProtectedRoute allowedLevels={['administrador', 'gerente']}>
+              <ConfiguracoesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/configuracoes/tabelas-auxiliares"
+          element={
+            <ProtectedRoute allowedLevels={['administrador', 'gerente']}>
+              <TabelasAuxiliaresPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/configuracoes/tabelas-auxiliares/tipos-alerta"
+          element={
+            <ProtectedRoute allowedLevels={['administrador', 'gerente']}>
+              <TiposAlertaPage />
             </ProtectedRoute>
           }
         />

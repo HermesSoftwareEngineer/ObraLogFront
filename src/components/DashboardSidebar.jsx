@@ -1,13 +1,13 @@
 import {
   Bot,
-  Bell,
   BriefcaseBusiness,
+  ChevronLeft,
+  ChevronRight,
   ClipboardList,
   FileText,
   LayoutDashboard,
   LogOut,
   MessageSquare,
-  ScrollText,
   Users,
 } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
@@ -16,27 +16,36 @@ import { hasAnyLevelAccess } from '../services/accessControl'
 
 const mainItems = [
   { label: 'Dashboard', icon: LayoutDashboard, to: '/dashboard' },
-  { label: 'Mensagens de Campo', icon: MessageSquare, to: '/dashboard/mensagens-campo' },
-  { label: 'Registros', icon: FileText, to: '/dashboard/registros' },
   {
-    label: 'Auditoria Registros',
-    icon: ScrollText,
-    to: '/dashboard/registros/auditoria',
-    allowedLevels: ['gerente'],
+    label: 'Conversas',
+    icon: MessageSquare,
+    to: '/dashboard/conversas',
+    allowedLevels: ['administrador'],
   },
+  { label: 'Registros', icon: FileText, to: '/dashboard/registros' },
   { label: 'Diario de Obra', icon: FileText, to: '/dashboard/diario-obra' },
   { label: 'Frentes', icon: BriefcaseBusiness, to: '/dashboard/frentes-servico' },
-  { label: 'Alertas', icon: Bell, to: '/dashboard/alertas' },
+  {
+    label: 'Configuracoes',
+    icon: ClipboardList,
+    to: '/dashboard/configuracoes',
+    allowedLevels: ['administrador', 'gerente'],
+  },
 ]
 
-function SidebarItem({ item }) {
+function SidebarItem({ item, isCollapsed }) {
   const Icon = item.icon
 
   if (item.disabled) {
     return (
-      <div className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-stone-400">
+      <div
+        className={`flex w-full rounded-xl px-3 py-2.5 text-sm font-semibold text-stone-400 ${
+          isCollapsed ? 'justify-center' : 'items-center gap-3'
+        }`}
+        title={item.label}
+      >
         <Icon size={18} />
-        {item.label}
+        {!isCollapsed && item.label}
       </div>
     )
   }
@@ -45,8 +54,11 @@ function SidebarItem({ item }) {
     <NavLink
       to={item.to}
       end={item.to === '/dashboard'}
+      title={item.label}
       className={({ isActive }) =>
-        `flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
+        `flex w-full rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
+          isCollapsed ? 'justify-center' : 'items-center gap-3'
+        } ${
           isActive
             ? 'bg-[#1C1917] text-white'
             : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900'
@@ -54,37 +66,56 @@ function SidebarItem({ item }) {
       }
     >
       <Icon size={18} />
-      {item.label}
+      {!isCollapsed && item.label}
     </NavLink>
   )
 }
 
-function DashboardSidebar({ user, onLogout }) {
+function DashboardSidebar({ user, onLogout, isCollapsed = false, onToggleCollapse }) {
   const persistedUser = getStoredUser()
   const effectiveUser = user || persistedUser
   const isAdmin = effectiveUser?.nivel_acesso === 'administrador'
   const visibleMainItems = mainItems.filter((item) => hasAnyLevelAccess(effectiveUser, item.allowedLevels))
 
   return (
-    <aside className="hidden w-72 shrink-0 rounded-3xl border border-stone-200 bg-white p-5 shadow-sm lg:block">
-      <NavLink to="/dashboard" className="mb-8 inline-flex items-center gap-2">
-        <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#F97316] text-white">
-          <LayoutDashboard size={20} />
-        </span>
-        <span className="font-display text-lg font-extrabold text-stone-900">Diario de Obra</span>
-      </NavLink>
+    <aside
+      className={`hidden shrink-0 rounded-3xl border border-stone-200 bg-white shadow-sm lg:block ${
+        isCollapsed ? 'w-20 p-3' : 'w-72 p-5'
+      }`}
+    >
+      <div className={`mb-8 flex items-center ${isCollapsed ? 'justify-center' : 'justify-between gap-2'}`}>
+        <NavLink to="/dashboard" className="inline-flex items-center gap-2" title="Dashboard">
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#F97316] text-white">
+            <LayoutDashboard size={20} />
+          </span>
+          {!isCollapsed && <span className="font-display text-lg font-extrabold text-stone-900">Diario de Obra</span>}
+        </NavLink>
+
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-stone-300 text-stone-600 transition hover:bg-stone-100 hover:text-stone-900"
+          title={isCollapsed ? 'Expandir menu' : 'Colapsar menu'}
+          aria-label={isCollapsed ? 'Expandir menu' : 'Colapsar menu'}
+        >
+          {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+        </button>
+      </div>
 
       <nav className="space-y-2">
         {visibleMainItems.map((item) => (
-          <SidebarItem key={item.label} item={item} />
+          <SidebarItem key={item.label} item={item} isCollapsed={isCollapsed} />
         ))}
 
         {isAdmin && (
           <>
             <NavLink
               to="/dashboard/usuarios"
+              title="Usuarios"
               className={({ isActive }) =>
-                `flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
+                `flex w-full rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
+                  isCollapsed ? 'justify-center' : 'items-center gap-3'
+                } ${
                   isActive
                     ? 'bg-[#1C1917] text-white'
                     : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900'
@@ -92,13 +123,16 @@ function DashboardSidebar({ user, onLogout }) {
               }
             >
               <Users size={18} />
-              Usuarios
+              {!isCollapsed && 'Usuarios'}
             </NavLink>
 
             <NavLink
               to="/dashboard/agent/instrucoes"
+              title="Instrucoes do Agente"
               className={({ isActive }) =>
-                `flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
+                `flex w-full rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
+                  isCollapsed ? 'justify-center' : 'items-center gap-3'
+                } ${
                   isActive
                     ? 'bg-[#1C1917] text-white'
                     : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900'
@@ -106,7 +140,7 @@ function DashboardSidebar({ user, onLogout }) {
               }
             >
               <Bot size={18} />
-              Instrucoes do Agente
+              {!isCollapsed && 'Instrucoes do Agente'}
             </NavLink>
           </>
         )}
@@ -115,10 +149,13 @@ function DashboardSidebar({ user, onLogout }) {
       <button
         type="button"
         onClick={onLogout}
-        className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-stone-300 px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:bg-stone-100"
+        title="Sair"
+        className={`mt-8 inline-flex rounded-xl border border-stone-300 px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:bg-stone-100 ${
+          isCollapsed ? 'w-full items-center justify-center' : 'w-full items-center justify-center gap-2'
+        }`}
       >
         <LogOut size={16} />
-        Sair
+        {!isCollapsed && 'Sair'}
       </button>
     </aside>
   )

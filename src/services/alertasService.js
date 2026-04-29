@@ -49,6 +49,14 @@ export async function updateAlertaStatus(token, alertId, payload) {
   })
 }
 
+export async function updateAlerta(token, alertId, payload) {
+  return apiRequest(`/alertas/${alertId}`, {
+    method: 'PATCH',
+    token,
+    body: payload,
+  })
+}
+
 export async function markAlertaAsRead(token, alertId) {
   return apiRequest(`/alertas/${alertId}/read`, {
     method: 'POST',
@@ -59,6 +67,44 @@ export async function markAlertaAsRead(token, alertId) {
 export async function markAlertaAsUnread(token, alertId) {
   return apiRequest(`/alertas/${alertId}/unread`, {
     method: 'POST',
+    token,
+  })
+}
+
+export async function listAlertaTiposSimples(token, options = {}) {
+  const params = new URLSearchParams()
+
+  if (typeof options.ativos_apenas === 'boolean') {
+    params.append('ativos_apenas', String(options.ativos_apenas))
+  }
+
+  const queryString = params.toString()
+
+  return apiRequest(`/alertas/tipos/simples${queryString ? `?${queryString}` : ''}`, {
+    method: 'GET',
+    token,
+  })
+}
+
+export async function createAlertaTipoSimples(token, payload) {
+  return apiRequest('/alertas/tipos/simples', {
+    method: 'POST',
+    token,
+    body: payload,
+  })
+}
+
+export async function updateAlertaTipoSimples(token, tipoId, payload) {
+  return apiRequest(`/alertas/tipos/simples/${tipoId}`, {
+    method: 'PATCH',
+    token,
+    body: payload,
+  })
+}
+
+export async function deleteAlertaTipoSimples(token, tipoId) {
+  return apiRequest(`/alertas/tipos/simples/${tipoId}`, {
+    method: 'DELETE',
     token,
   })
 }

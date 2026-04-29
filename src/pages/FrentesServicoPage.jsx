@@ -1,7 +1,7 @@
 import { BriefcaseBusiness, LoaderCircle, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import DashboardSidebar from '../components/DashboardSidebar'
+import DashboardShell from '../components/DashboardShell'
 import { getCurrentUser } from '../services/authService'
 import { clearAuthSession, getAuthToken } from '../services/authStorage'
 import {
@@ -303,120 +303,116 @@ function FrentesServicoPage() {
   const getUserById = (userId) => users.find((user) => String(user.id) === String(userId))
 
   return (
-    <div className="min-h-screen bg-[#F5F5F4] text-[#292524]">
-      <div className="mx-auto flex max-w-7xl gap-4 p-4 sm:p-6 lg:gap-6 lg:p-8">
-        <DashboardSidebar user={currentUser} onLogout={handleLogout} />
+    <>
+      <DashboardShell user={currentUser} onLogout={handleLogout}>
+        <header className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wider text-[#F97316]">Operacao</p>
+            <h1 className="mt-1 font-display text-3xl font-extrabold text-stone-900">Frentes de servico</h1>
+          </div>
+          <div className="rounded-xl bg-stone-100 px-4 py-2 text-sm text-stone-700">
+            {currentUser ? `${currentUser.nome} (${currentUser.nivel_acesso})` : 'Carregando usuario...'}
+          </div>
+        </header>
 
-        <main className="w-full rounded-3xl border border-stone-200 bg-white p-5 shadow-sm sm:p-8">
-          <header className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-wider text-[#F97316]">Operacao</p>
-              <h1 className="mt-1 font-display text-3xl font-extrabold text-stone-900">Frentes de servico</h1>
-            </div>
-            <div className="rounded-xl bg-stone-100 px-4 py-2 text-sm text-stone-700">
-              {currentUser ? `${currentUser.nome} (${currentUser.nivel_acesso})` : 'Carregando usuario...'}
-            </div>
-          </header>
+        {isLoading && (
+          <div className="mt-8 flex items-center gap-3 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">
+            <LoaderCircle size={16} className="animate-spin" />
+            Carregando frentes de servico...
+          </div>
+        )}
 
-          {isLoading && (
-            <div className="mt-8 flex items-center gap-3 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">
-              <LoaderCircle size={16} className="animate-spin" />
-              Carregando frentes de servico...
-            </div>
-          )}
+        {!isLoading && (
+          <div className="mt-8 space-y-6">
+            {error && (
+              <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+            )}
+            {success && (
+              <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                {success}
+              </p>
+            )}
 
-          {!isLoading && (
-            <div className="mt-8 space-y-6">
-              {error && (
-                <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-              )}
-              {success && (
-                <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                  {success}
-                </p>
-              )}
+            <section className="rounded-2xl border border-stone-200 bg-white p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="font-display text-xl font-bold text-stone-900">Lista de frentes</h2>
+                <button
+                  type="button"
+                  onClick={() => setIsCreateModalOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#F97316] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-orange-500"
+                >
+                  <Plus size={16} />
+                  Cadastrar frente
+                </button>
+              </div>
 
-              <section className="rounded-2xl border border-stone-200 bg-white p-5">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="font-display text-xl font-bold text-stone-900">Lista de frentes</h2>
-                  <button
-                    type="button"
-                    onClick={() => setIsCreateModalOpen(true)}
-                    className="inline-flex items-center gap-2 rounded-xl bg-[#F97316] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-orange-500"
-                  >
-                    <Plus size={16} />
-                    Cadastrar frente
-                  </button>
-                </div>
-
-                <div className="mt-4 overflow-x-auto">
-                  <table className="min-w-full border-separate border-spacing-y-2 text-sm">
-                    <thead>
-                      <tr className="text-left text-stone-500">
-                        <th className="px-3 py-2">ID</th>
-                        <th className="px-3 py-2">Nome</th>
-                        <th className="px-3 py-2">Encarregado</th>
-                        <th className="px-3 py-2">Acoes</th>
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full border-separate border-spacing-y-2 text-sm">
+                  <thead>
+                    <tr className="text-left text-stone-500">
+                      <th className="px-3 py-2">ID</th>
+                      <th className="px-3 py-2">Nome</th>
+                      <th className="px-3 py-2">Encarregado</th>
+                      <th className="px-3 py-2">Acoes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {frentes.map((frente) => (
+                      <tr key={frente.id} className="rounded-xl bg-[#F5F5F4] text-stone-700">
+                        <td className="rounded-l-xl px-3 py-2">{frente.id}</td>
+                        <td className="px-3 py-2 font-semibold">{frente.nome}</td>
+                        <td className="px-3 py-2">
+                          {frente.encarregado_responsavel ? (
+                            <>
+                              <span className="font-semibold">
+                                {getUserById(frente.encarregado_responsavel)?.nome ||
+                                  `Usuario #${frente.encarregado_responsavel}`}
+                              </span>
+                              <span className="ml-1 text-xs text-stone-500">
+                                ({getUserById(frente.encarregado_responsavel)?.email || 'sem e-mail'})
+                              </span>
+                            </>
+                          ) : (
+                            '-'
+                          )}
+                        </td>
+                        <td className="rounded-r-xl px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleStartEdit(frente.id)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-stone-300 bg-white px-2 py-1 text-xs font-semibold text-stone-700 hover:bg-stone-100"
+                            >
+                              <Pencil size={14} />
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteTarget(frente)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
+                            >
+                              <Trash2 size={14} />
+                              Excluir
+                            </button>
+                          </div>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {frentes.map((frente) => (
-                        <tr key={frente.id} className="rounded-xl bg-[#F5F5F4] text-stone-700">
-                          <td className="rounded-l-xl px-3 py-2">{frente.id}</td>
-                          <td className="px-3 py-2 font-semibold">{frente.nome}</td>
-                          <td className="px-3 py-2">
-                            {frente.encarregado_responsavel ? (
-                              <>
-                                <span className="font-semibold">
-                                  {getUserById(frente.encarregado_responsavel)?.nome ||
-                                    `Usuario #${frente.encarregado_responsavel}`}
-                                </span>
-                                <span className="ml-1 text-xs text-stone-500">
-                                  ({getUserById(frente.encarregado_responsavel)?.email || 'sem e-mail'})
-                                </span>
-                              </>
-                            ) : (
-                              '-'
-                            )}
-                          </td>
-                          <td className="rounded-r-xl px-3 py-2">
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => handleStartEdit(frente.id)}
-                                className="inline-flex items-center gap-1 rounded-lg border border-stone-300 bg-white px-2 py-1 text-xs font-semibold text-stone-700 hover:bg-stone-100"
-                              >
-                                <Pencil size={14} />
-                                Editar
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setDeleteTarget(frente)}
-                                className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
-                              >
-                                <Trash2 size={14} />
-                                Excluir
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                    ))}
 
-                      {frentes.length === 0 && (
-                        <tr>
-                          <td colSpan={4} className="px-3 py-8 text-center text-stone-500">
-                            Nenhuma frente de servico encontrada.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            </div>
-          )}
-        </main>
-      </div>
+                    {frentes.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="px-3 py-8 text-center text-stone-500">
+                          Nenhuma frente de servico encontrada.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        )}
+      </DashboardShell>
 
       {isCreateModalOpen && (
         <ModalShell
@@ -567,7 +563,7 @@ function FrentesServicoPage() {
           </div>
         </ModalShell>
       )}
-    </div>
+    </>
   )
 }
 

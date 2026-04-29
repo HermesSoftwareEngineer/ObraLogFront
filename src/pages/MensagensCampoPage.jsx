@@ -1,13 +1,10 @@
-import { Eye, LoaderCircle } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { Bot, LoaderCircle, MessageSquare, RefreshCcw, User } from 'lucide-react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import DashboardSidebar from '../components/DashboardSidebar'
+import DashboardShell from '../components/DashboardShell'
 import { getCurrentUser } from '../services/authService'
 import { clearAuthSession, getAuthToken } from '../services/authStorage'
-import { getMensagemCampoById, listMensagensCampo } from '../services/mensagensCampoService'
-import { getEntityId, normalizeCollection, normalizeEntity } from '../services/responseNormalizers'
-
-const STATUS_OPTIONS = ['pendente', 'processada', 'erro']
+import { listChatConversas, listChatMensagensWithFallback } from '../services/mensagensCampoService'
 
 function formatDateTime(value) {
   if (!value) {
@@ -22,21 +19,106 @@ function formatDateTime(value) {
   return parsed.toLocaleString('pt-BR')
 }
 
+function normalizeConversas(data) {
+  if (Array.isArray(data)) return data
+  if (Array.isArray(data?.conversas)) return data.conversas
+  if (Array.isArray(data?.items)) return data.items
+  if (Array.isArray(data?.data)) return data.data
+  return []
+}
+
+function normalizeMensagens(data) {
+  if (Array.isArray(data)) return data
+  if (Array.isArray(data?.mensagens)) return data.mensagens
+  if (Array.isArray(data?.items)) return data.items
+  if (Array.isArray(data?.data)) return data.data
+  return []
+}
+
+function mergeMensagensById(current, incoming) {
+  const map = new Map()
+
+  current.forEach((item) => {
+    if (item?.id) {
+      map.set(String(item.id), item)
+    }
+  })
+
+  incoming.forEach((item) => {
+    if (item?.id) {
+      map.set(String(item.id), item)
+    }
+  })
+
+  return Array.from(map.values())
+}
+
+function isBotMessage(mensagem) {
+  const direcao = String(mensagem?.direcao || '').trim().toLowerCase()
+  if (direcao === 'agent') {
+    return true
+  }
+
+  if (direcao === 'user') {
+    return false
+  }
+
+  if (typeof mensagem?.eh_bot === 'boolean') {
+    return mensagem.eh_bot
+  }
+
+  if (typeof mensagem?.is_bot === 'boolean') {
+    return mensagem.is_bot
+  }
+
+  const roleLikeFields = [
+    mensagem?.role,
+    mensagem?.origem,
+    mensagem?.autor_tipo,
+    mensagem?.remetente_tipo,
+    mensagem?.sender_type,
+    mensagem?.from,
+  ]
+
+  const hasBotRole = roleLikeFields.some((value) => {
+    const normalized = String(value || '').trim().toLowerCase()
+    return ['bot', 'assistant', 'agente', 'agent', 'ia'].includes(normalized)
+  })
+
+  if (hasBotRole) {
+    return true
+  }
+
+  return false
+}
+
+function getMessageDirection(mensagem) {
+  const direcao = String(mensagem?.direcao || '').trim().toLowerCase()
+  if (direcao === 'agent' || direcao === 'user') {
+    return direcao
+  }
+
+  return isBotMessage(mensagem) ? 'agent' : 'user'
+}
+
 function MensagensCampoPage() {
   const navigate = useNavigate()
   const [currentUser, setCurrentUser] = useState(null)
+  const [conversas, setConversas] = useState([])
   const [mensagens, setMensagens] = useState([])
-  const [selectedMensagem, setSelectedMensagem] = useState(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [isLoadingDetail, setIsLoadingDetail] = useState(false)
+  const [selectedChatId, setSelectedChatId] = useState('')
+  const [isLoadingConversas, setIsLoadingConversas] = useState(true)
+  const [isLoadingMensagens, setIsLoadingMensagens] = useState(false)
   const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
-  const [filters, setFilters] = useState({
-    status: '',
-    telegram_chat_id: '',
-    limit: '50',
-  })
-  const [activeFilters, setActiveFilters] = useState({ limit: 50 })
+  const [conversasPage, setConversasPage] = useState(1)
+  const [conversasPerPage] = useState(50)
+  const [conversasTotal, setConversasTotal] = useState(0)
+  const [mensagensPage, setMensagensPage] = useState(1)
+  const [mensagensPerPage] = useState(50)
+  const [mensagensTotal, setMensagensTotal] = useState(0)
+  const messagesContainerRef = useRef(null)
+  const shouldScrollToBottomRef = useRef(false)
+  const prependSnapshotRef = useRef(null)
 
   const token = useMemo(() => getAuthToken(), [])
 
@@ -45,28 +127,59 @@ function MensagensCampoPage() {
     navigate('/login', { replace: true })
   }
 
-  const buildFilterPayload = () => {
-    const payload = {}
-
-    if (filters.status.trim()) {
-      payload.status = filters.status
+  const loadMensagens = async (chatId, page = 1, append = false) => {
+    if (!chatId) {
+      setMensagens([])
+      setMensagensPage(1)
+      setMensagensTotal(0)
+      return
     }
 
-    if (filters.telegram_chat_id.trim()) {
-      payload.telegram_chat_id = filters.telegram_chat_id.trim()
-    }
+    setIsLoadingMensagens(true)
+    setError('')
 
-    const parsedLimit = Number(filters.limit)
-    if (Number.isFinite(parsedLimit) && parsedLimit >= 1 && parsedLimit <= 200) {
-      payload.limit = parsedLimit
-    }
+    try {
+      const data = await listChatMensagensWithFallback(token, chatId, {
+        page,
+        per_page: mensagensPerPage,
+      })
 
-    return payload
+      const nextMensagens = normalizeMensagens(data)
+      setMensagens((prev) => (append ? mergeMensagensById(prev, nextMensagens) : nextMensagens))
+      setMensagensPage(Number(data?.page) || page)
+      setMensagensTotal(Number(data?.total) || 0)
+
+      if (!append) {
+        shouldScrollToBottomRef.current = true
+      }
+    } catch (err) {
+      setError(err.message || 'Nao foi possivel carregar as mensagens da conversa.')
+    } finally {
+      setIsLoadingMensagens(false)
+    }
   }
 
-  const loadMensagens = async (filterParams = activeFilters) => {
-    const data = await listMensagensCampo(token, filterParams)
-    setMensagens(normalizeCollection(data, ['items', 'mensagens', 'data']))
+  const loadConversas = async (page = 1) => {
+    setIsLoadingConversas(true)
+    setError('')
+
+    try {
+      const data = await listChatConversas(token, {
+        page,
+        per_page: conversasPerPage,
+      })
+
+      const collection = normalizeConversas(data)
+      setConversas(collection)
+      setConversasPage(Number(data?.page) || page)
+      setConversasTotal(Number(data?.total) || 0)
+      return collection
+    } catch (err) {
+      setError(err.message || 'Nao foi possivel carregar as conversas.')
+      return []
+    } finally {
+      setIsLoadingConversas(false)
+    }
   }
 
   useEffect(() => {
@@ -76,245 +189,288 @@ function MensagensCampoPage() {
         return
       }
 
-      setIsLoading(true)
+      setIsLoadingConversas(true)
       setError('')
 
       try {
         const meData = await getCurrentUser(token)
         setCurrentUser(meData.user)
-        await loadMensagens({ limit: 50 })
+
+        const firstPageConversas = await loadConversas(1)
+        const initialChatId = firstPageConversas[0]?.telegram_chat_id
+
+        if (initialChatId) {
+          setSelectedChatId(String(initialChatId))
+          await loadMensagens(String(initialChatId), 1, false)
+        }
       } catch (err) {
-        setError(err.message || 'Nao foi possivel carregar mensagens de campo.')
+        setError(err.message || 'Nao foi possivel carregar conversas.')
         if (err.status === 401 || err.status === 403) {
           handleLogout()
         }
       } finally {
-        setIsLoading(false)
+        setIsLoadingConversas(false)
       }
     }
 
     bootstrap()
   }, [token, navigate])
 
-  const handleFilterChange = (field, value) => {
-    setFilters((prev) => ({ ...prev, [field]: value }))
-  }
-
-  const handleApplyFilters = async () => {
-    setError('')
-    setSuccess('')
-
-    const payload = buildFilterPayload()
-    setActiveFilters(payload)
-
-    try {
-      await loadMensagens(payload)
-      setSuccess('Filtros aplicados com sucesso.')
-    } catch (err) {
-      setError(err.message || 'Nao foi possivel aplicar filtros.')
-    }
-  }
-
-  const handleClearFilters = async () => {
-    setError('')
-    setSuccess('')
-
-    const defaultFilters = {
-      status: '',
-      telegram_chat_id: '',
-      limit: '50',
-    }
-
-    setFilters(defaultFilters)
-    setActiveFilters({ limit: 50 })
-
-    try {
-      await loadMensagens({ limit: 50 })
-      setSuccess('Filtros limpos com sucesso.')
-    } catch (err) {
-      setError(err.message || 'Nao foi possivel limpar filtros.')
-    }
-  }
-
-  const handleOpenDetail = async (mensagemId) => {
-    if (!mensagemId) {
+  const handleSelectConversa = async (chatId) => {
+    if (!chatId) {
       return
     }
 
-    setError('')
-    setIsLoadingDetail(true)
-
-    try {
-      const data = await getMensagemCampoById(token, mensagemId)
-      setSelectedMensagem(normalizeEntity(data, ['mensagem', 'item', 'data']))
-    } catch (err) {
-      setError(err.message || 'Nao foi possivel carregar o detalhe da mensagem.')
-    } finally {
-      setIsLoadingDetail(false)
-    }
+    setSelectedChatId(String(chatId))
+    setMensagens([])
+    await loadMensagens(String(chatId), 1, false)
   }
 
-  return (
-    <div className="min-h-screen bg-[#F5F5F4] text-[#292524]">
-      <div className="mx-auto flex max-w-7xl gap-4 p-4 sm:p-6 lg:gap-6 lg:p-8">
-        <DashboardSidebar user={currentUser} onLogout={handleLogout} />
+  const handleLoadMoreMensagens = async () => {
+    if (!selectedChatId || mensagens.length >= mensagensTotal || isLoadingMensagens) {
+      return
+    }
 
-        <main className="w-full rounded-3xl border border-stone-200 bg-white p-5 shadow-sm sm:p-8">
-          <header className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-wider text-[#F97316]">Operacao</p>
-              <h1 className="mt-1 font-display text-3xl font-extrabold text-stone-900">Mensagens de campo</h1>
-            </div>
-            <div className="rounded-xl bg-stone-100 px-4 py-2 text-sm text-stone-700">
-              {currentUser ? `${currentUser.nome} (${currentUser.nivel_acesso})` : 'Carregando usuario...'}
-            </div>
+    const container = messagesContainerRef.current
+    if (container) {
+      prependSnapshotRef.current = {
+        scrollHeight: container.scrollHeight,
+        scrollTop: container.scrollTop,
+      }
+    }
+
+    await loadMensagens(selectedChatId, mensagensPage + 1, true)
+  }
+
+  const selectedConversa = conversas.find((item) => String(item.telegram_chat_id) === String(selectedChatId))
+  const orderedMensagens = [...mensagens].sort((a, b) => {
+    const first = new Date(a?.recebida_em || 0).getTime()
+    const second = new Date(b?.recebida_em || 0).getTime()
+    return first - second
+  })
+
+  const hasMoreMensagens = mensagens.length < mensagensTotal
+  const totalConversaPages = Math.max(1, Math.ceil(conversasTotal / conversasPerPage))
+
+  useLayoutEffect(() => {
+    const container = messagesContainerRef.current
+    if (!container) {
+      return
+    }
+
+    if (prependSnapshotRef.current) {
+      const snapshot = prependSnapshotRef.current
+      const delta = container.scrollHeight - snapshot.scrollHeight
+      container.scrollTop = snapshot.scrollTop + delta
+      prependSnapshotRef.current = null
+      return
+    }
+
+    if (shouldScrollToBottomRef.current) {
+      container.scrollTop = container.scrollHeight
+      shouldScrollToBottomRef.current = false
+    }
+  }, [mensagens, selectedChatId])
+
+  return (
+    <DashboardShell user={currentUser} onLogout={handleLogout}>
+      <header className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-wider text-[#F97316]">Operacao</p>
+          <h1 className="mt-1 font-display text-3xl font-extrabold text-stone-900">Conversas</h1>
+        </div>
+
+        <div className="inline-flex items-center gap-2 rounded-xl bg-stone-100 px-4 py-2 text-sm text-stone-700">
+          {currentUser ? `${currentUser.nome} (${currentUser.nivel_acesso})` : 'Carregando usuario...'}
+          <button
+            type="button"
+            onClick={() => loadConversas(conversasPage)}
+            className="inline-flex items-center rounded-lg border border-stone-300 bg-white p-1.5 text-stone-600 hover:bg-stone-100"
+            title="Atualizar conversas"
+            aria-label="Atualizar conversas"
+          >
+            <RefreshCcw size={14} />
+          </button>
+        </div>
+      </header>
+
+      {error && (
+        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+      )}
+
+      <section className="mt-6 grid h-[calc(100vh-13.5rem)] min-h-[28rem] max-h-[calc(100vh-13.5rem)] gap-3 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <aside className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white">
+          <div className="border-b border-stone-200 px-3 py-2.5">
+            <h2 className="font-display text-lg font-bold text-stone-900">Conversas Telegram</h2>
+            <p className="text-xs text-stone-500">{conversasTotal} conversa(s)</p>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+            {isLoadingConversas ? (
+              <div className="flex items-center gap-2 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-600">
+                <LoaderCircle size={14} className="animate-spin" />
+                Carregando conversas...
+              </div>
+            ) : conversas.length === 0 ? (
+              <p className="px-3 py-6 text-center text-sm text-stone-500">Nenhuma conversa encontrada.</p>
+            ) : (
+              <div className="space-y-2">
+                {conversas.map((conversa) => {
+                  const chatId = String(conversa.telegram_chat_id || '')
+                  const isActive = chatId === String(selectedChatId)
+                  const usuarioNome = conversa?.usuario?.nome || 'Usuario nao vinculado'
+
+                  return (
+                    <button
+                      key={chatId}
+                      type="button"
+                      onClick={() => handleSelectConversa(chatId)}
+                      className={`w-full rounded-xl border px-2.5 py-2.5 text-left transition ${
+                        isActive
+                          ? 'border-stone-900 bg-stone-900 text-white'
+                          : 'border-stone-200 bg-stone-50 text-stone-800 hover:border-stone-300 hover:bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="truncate text-sm font-semibold">{usuarioNome}</p>
+                        <span className={`text-[11px] ${isActive ? 'text-stone-200' : 'text-stone-500'}`}>
+                          {conversa.total_mensagens || 0}
+                        </span>
+                      </div>
+                      <p className={`mt-0.5 truncate text-xs ${isActive ? 'text-stone-200' : 'text-stone-500'}`}>
+                        Chat: {chatId || '-'}
+                      </p>
+                      <p className={`mt-2 truncate text-xs ${isActive ? 'text-stone-100' : 'text-stone-600'}`}>
+                        {conversa.ultima_mensagem_texto || '(sem texto)'}
+                      </p>
+                      <p className={`mt-2 text-[11px] ${isActive ? 'text-stone-300' : 'text-stone-500'}`}>
+                        {formatDateTime(conversa.ultima_mensagem_em)}
+                      </p>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between border-t border-stone-200 px-3 py-2">
+            <button
+              type="button"
+              disabled={conversasPage <= 1 || isLoadingConversas}
+              onClick={async () => {
+                const nextPage = Math.max(1, conversasPage - 1)
+                const loaded = await loadConversas(nextPage)
+                if (loaded.length > 0) {
+                  await handleSelectConversa(String(loaded[0].telegram_chat_id || ''))
+                }
+              }}
+              className="rounded-lg border border-stone-300 px-2.5 py-1 text-xs font-semibold text-stone-700 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Anterior
+            </button>
+            <span className="text-xs text-stone-500">Pagina {conversasPage} de {totalConversaPages}</span>
+            <button
+              type="button"
+              disabled={conversasPage >= totalConversaPages || isLoadingConversas}
+              onClick={async () => {
+                const nextPage = Math.min(totalConversaPages, conversasPage + 1)
+                const loaded = await loadConversas(nextPage)
+                if (loaded.length > 0) {
+                  await handleSelectConversa(String(loaded[0].telegram_chat_id || ''))
+                }
+              }}
+              className="rounded-lg border border-stone-300 px-2.5 py-1 text-xs font-semibold text-stone-700 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Proxima
+            </button>
+          </div>
+        </aside>
+
+        <article className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white">
+          <header className="border-b border-stone-200 px-3 py-2.5">
+            {!selectedConversa ? (
+              <p className="text-sm text-stone-600">Selecione uma conversa para visualizar as mensagens.</p>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="font-display text-lg font-bold text-stone-900">
+                    {selectedConversa?.usuario?.nome || 'Usuario nao vinculado'}
+                  </h2>
+                  <p className="text-xs text-stone-500">Chat {selectedConversa.telegram_chat_id}</p>
+                </div>
+                <div className="text-right text-xs text-stone-500">
+                  <p>Total: {mensagensTotal}</p>
+                  <p>Exibindo: {mensagens.length}</p>
+                </div>
+              </div>
+            )}
           </header>
 
-          {error && (
-            <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-          )}
+          <div ref={messagesContainerRef} className="min-h-0 flex-1 overflow-y-auto bg-[#F8FAFC] p-3">
+            {!selectedConversa ? (
+              <div className="flex h-full items-center justify-center text-sm text-stone-500">
+                <span className="inline-flex items-center gap-2">
+                  <MessageSquare size={16} />
+                  Nenhuma conversa selecionada.
+                </span>
+              </div>
+            ) : isLoadingMensagens && mensagens.length === 0 ? (
+              <div className="flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-stone-600">
+                <LoaderCircle size={14} className="animate-spin" />
+                Carregando mensagens...
+              </div>
+            ) : orderedMensagens.length === 0 ? (
+              <p className="text-center text-sm text-stone-500">Sem mensagens para esta conversa.</p>
+            ) : (
+              <div className="space-y-3">
+                {orderedMensagens.map((mensagem) => {
+                  const direction = getMessageDirection(mensagem)
+                  const botMessage = direction === 'agent'
 
-          {success && (
-            <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-              {success}
-            </p>
-          )}
-
-          {isLoading ? (
-            <div className="mt-8 flex items-center gap-3 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">
-              <LoaderCircle size={16} className="animate-spin" />
-              Carregando mensagens de campo...
-            </div>
-          ) : (
-            <div className="mt-8 space-y-6">
-              <section className="rounded-2xl border border-stone-200 bg-white p-4">
-                <h2 className="font-display text-lg font-bold text-stone-900">Filtros</h2>
-
-                <div className="mt-4 grid gap-3 md:grid-cols-4">
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-semibold text-stone-600">Status</span>
-                    <select
-                      value={filters.status}
-                      onChange={(event) => handleFilterChange('status', event.target.value)}
-                      className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
+                  return (
+                  <div key={String(mensagem.id)} className={`flex ${botMessage ? 'justify-end' : 'justify-start'}`}>
+                    <div
+                      className={`max-w-[92%] rounded-2xl border px-3 py-2.5 shadow-sm ${
+                        botMessage
+                          ? 'border-stone-300 bg-stone-900 text-white'
+                          : 'border-stone-200 bg-white text-stone-800'
+                      }`}
                     >
-                      <option value="">Todos</option>
-                      {STATUS_OPTIONS.map((status) => (
-                        <option key={status} value={status}>
-                          {status}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                      <div className={`mb-1 flex items-center gap-2 text-[11px] ${botMessage ? 'text-stone-200' : 'text-stone-500'}`}>
+                        {botMessage ? <Bot size={12} /> : <User size={12} />}
+                        <span>{direction === 'agent' ? 'agent' : 'user'} • {mensagem.tipo_conteudo || 'texto'}</span>
+                        <span className={`rounded-full px-2 py-0.5 ${botMessage ? 'bg-stone-700 text-stone-100' : 'bg-stone-100'}`}>
+                          {mensagem.status_processamento || 'pendente'}
+                        </span>
+                      </div>
+                      <p className="whitespace-pre-wrap text-sm">{mensagem.texto || '(sem texto)'}</p>
+                      <p className={`mt-2 text-[11px] ${botMessage ? 'text-left text-stone-300' : 'text-right text-stone-500'}`}>
+                        {formatDateTime(mensagem.recebida_em)}
+                      </p>
+                    </div>
+                  </div>
+                )})}
+              </div>
+            )}
+          </div>
 
-                  <label className="block md:col-span-2">
-                    <span className="mb-1 block text-xs font-semibold text-stone-600">Telegram chat id</span>
-                    <input
-                      value={filters.telegram_chat_id}
-                      onChange={(event) => handleFilterChange('telegram_chat_id', event.target.value)}
-                      placeholder="Ex.: 1751541108"
-                      className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
-                    />
-                  </label>
-
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-semibold text-stone-600">Limite (1..200)</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max="200"
-                      value={filters.limit}
-                      onChange={(event) => handleFilterChange('limit', event.target.value)}
-                      className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
-                    />
-                  </label>
-                </div>
-
-                <div className="mt-4 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleApplyFilters}
-                    className="rounded-xl bg-[#1C1917] px-4 py-2 text-sm font-semibold text-white hover:bg-stone-800"
-                  >
-                    Aplicar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleClearFilters}
-                    className="rounded-xl border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-100"
-                  >
-                    Limpar
-                  </button>
-                </div>
-              </section>
-
-              <section className="rounded-2xl border border-stone-200 bg-white p-4">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full border-separate border-spacing-y-2 text-sm">
-                    <thead>
-                      <tr className="text-left text-stone-500">
-                        <th className="px-3 py-2">ID</th>
-                        <th className="px-3 py-2">Status</th>
-                        <th className="px-3 py-2">Telegram</th>
-                        <th className="px-3 py-2">Criado em</th>
-                        <th className="px-3 py-2">Acoes</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {mensagens.map((mensagem) => {
-                        const mensagemId = getEntityId(mensagem, ['id', 'mensagem_id', 'uuid'])
-
-                        return (
-                          <tr key={String(mensagemId)} className="rounded-xl bg-[#F5F5F4] text-stone-700">
-                            <td className="rounded-l-xl px-3 py-2 font-mono text-xs">{mensagemId || '-'}</td>
-                            <td className="px-3 py-2">{mensagem.status || '-'}</td>
-                            <td className="px-3 py-2">{mensagem.telegram_chat_id || '-'}</td>
-                            <td className="px-3 py-2">{formatDateTime(mensagem.created_at)}</td>
-                            <td className="rounded-r-xl px-3 py-2">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenDetail(mensagemId)}
-                                disabled={!mensagemId || isLoadingDetail}
-                                className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {isLoadingDetail ? <LoaderCircle size={14} className="animate-spin" /> : <Eye size={14} />}
-                                Detalhes
-                              </button>
-                            </td>
-                          </tr>
-                        )
-                      })}
-
-                      {mensagens.length === 0 && (
-                        <tr>
-                          <td colSpan={5} className="px-3 py-8 text-center text-stone-500">
-                            Nenhuma mensagem encontrada.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-
-              <section className="rounded-2xl border border-stone-200 bg-white p-4">
-                <h2 className="font-display text-lg font-bold text-stone-900">Detalhe da mensagem</h2>
-
-                {!selectedMensagem && (
-                  <p className="mt-2 text-sm text-stone-600">Selecione uma mensagem para visualizar o detalhe completo.</p>
-                )}
-
-                {selectedMensagem && (
-                  <pre className="mt-3 max-h-[420px] overflow-auto rounded-xl border border-stone-200 bg-stone-50 p-3 text-xs text-stone-700">
-                    {JSON.stringify(selectedMensagem, null, 2)}
-                  </pre>
-                )}
-              </section>
+          <footer className="border-t border-stone-200 px-3 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-stone-500">Visualizacao apenas leitura.</p>
+              <button
+                type="button"
+                onClick={handleLoadMoreMensagens}
+                disabled={!selectedChatId || !hasMoreMensagens || isLoadingMensagens}
+                className="inline-flex items-center gap-2 rounded-xl border border-stone-300 px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isLoadingMensagens ? <LoaderCircle size={13} className="animate-spin" /> : null}
+                Carregar mensagens mais antigas
+              </button>
             </div>
-          )}
-        </main>
-      </div>
-    </div>
+          </footer>
+        </article>
+      </section>
+    </DashboardShell>
   )
 }
 
