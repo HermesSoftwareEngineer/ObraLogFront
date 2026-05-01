@@ -114,6 +114,20 @@ export function getAlertaCode(alertaLike) {
   )
 }
 
+export function getAlertaDescription(alertaLike) {
+  const candidates = [
+    alertaLike?.description,
+    alertaLike?.descricao,
+    alertaLike?.desc,
+    alertaLike?.mensagem,
+    alertaLike?.observacao,
+    alertaLike?.raw_text,
+  ]
+
+  const description = candidates.find((value) => typeof value === 'string' && value.trim())
+  return description ? description.trim() : ''
+}
+
 export function parseReadValue(value) {
   if (typeof value === 'boolean') {
     return value

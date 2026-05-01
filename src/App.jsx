@@ -6,6 +6,7 @@ import DashboardPage from './pages/DashboardPage'
 import DiarioObraPage from './pages/DiarioObraPage'
 import DiarioObraVisualizacaoPage from './pages/DiarioObraVisualizacaoPage'
 import FrentesServicoPage from './pages/FrentesServicoPage'
+import GerenciarUnidadePage from './pages/GerenciarUnidadePage'
 import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 import MensagensCampoPage from './pages/MensagensCampoPage'
@@ -39,7 +40,7 @@ function App() {
         <Route
           path="/dashboard/usuarios"
           element={
-            <ProtectedRoute allowedLevels={['administrador']}>
+            <ProtectedRoute allowedLevels={['administrador', 'gerente']}>
               <UsuariosPage />
             </ProtectedRoute>
           }
@@ -106,6 +107,14 @@ function App() {
           element={
             <ProtectedRoute allowedLevels={['administrador', 'gerente']}>
               <TabelasAuxiliaresPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/configuracoes/unidade"
+          element={
+            <ProtectedRoute allowedLevels={['administrador', 'gerente']}>
+              <GerenciarUnidadePage />
             </ProtectedRoute>
           }
         />

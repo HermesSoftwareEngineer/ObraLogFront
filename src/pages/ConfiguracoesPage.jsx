@@ -1,4 +1,4 @@
-import { ChevronRight, Settings2 } from 'lucide-react'
+import { Building2, ChevronRight, Settings2 } from 'lucide-react'
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import DashboardShell from '../components/DashboardShell'
@@ -29,6 +29,21 @@ function ConfiguracoesPage() {
       </header>
 
       <section className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <button
+          type="button"
+          onClick={() => navigate('/dashboard/configuracoes/unidade')}
+          className="group rounded-2xl border border-stone-200 bg-white p-5 text-left transition hover:border-stone-300 hover:bg-stone-50"
+        >
+          <div className="flex items-center justify-between">
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100 text-orange-700">
+              <Building2 size={18} />
+            </span>
+            <ChevronRight size={18} className="text-stone-400 transition group-hover:text-stone-700" />
+          </div>
+          <h2 className="mt-4 font-display text-xl font-bold text-stone-900">Gerenciar unidade</h2>
+          <p className="mt-2 text-sm text-stone-600">Visualize e edite os dados cadastrais da unidade da empresa.</p>
+        </button>
+
         <button
           type="button"
           onClick={() => navigate('/dashboard/configuracoes/tabelas-auxiliares')}

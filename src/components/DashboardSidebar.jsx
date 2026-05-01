@@ -75,6 +75,7 @@ function DashboardSidebar({ user, onLogout, isCollapsed = false, onToggleCollaps
   const persistedUser = getStoredUser()
   const effectiveUser = user || persistedUser
   const isAdmin = effectiveUser?.nivel_acesso === 'administrador'
+  const canManageUsers = hasAnyLevelAccess(effectiveUser, ['administrador', 'gerente'])
   const visibleMainItems = mainItems.filter((item) => hasAnyLevelAccess(effectiveUser, item.allowedLevels))
 
   return (
@@ -107,25 +108,27 @@ function DashboardSidebar({ user, onLogout, isCollapsed = false, onToggleCollaps
           <SidebarItem key={item.label} item={item} isCollapsed={isCollapsed} />
         ))}
 
+        {canManageUsers && (
+          <NavLink
+            to="/dashboard/usuarios"
+            title="Usuarios"
+            className={({ isActive }) =>
+              `flex w-full rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
+                isCollapsed ? 'justify-center' : 'items-center gap-3'
+              } ${
+                isActive
+                  ? 'bg-[#1C1917] text-white'
+                  : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900'
+              }`
+            }
+          >
+            <Users size={18} />
+            {!isCollapsed && 'Usuarios'}
+          </NavLink>
+        )}
+
         {isAdmin && (
           <>
-            <NavLink
-              to="/dashboard/usuarios"
-              title="Usuarios"
-              className={({ isActive }) =>
-                `flex w-full rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
-                  isCollapsed ? 'justify-center' : 'items-center gap-3'
-                } ${
-                  isActive
-                    ? 'bg-[#1C1917] text-white'
-                    : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900'
-                }`
-              }
-            >
-              <Users size={18} />
-              {!isCollapsed && 'Usuarios'}
-            </NavLink>
-
             <NavLink
               to="/dashboard/agent/instrucoes"
               title="Instrucoes do Agente"

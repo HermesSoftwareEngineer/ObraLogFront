@@ -1,5 +1,8 @@
 import { Bot, LoaderCircle, MessageSquare, RefreshCcw, User } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkBreaks from 'remark-breaks'
+import remarkGfm from 'remark-gfm'
 import { useNavigate } from 'react-router-dom'
 import DashboardShell from '../components/DashboardShell'
 import { getCurrentUser } from '../services/authService'
@@ -99,6 +102,16 @@ function getMessageDirection(mensagem) {
   }
 
   return isBotMessage(mensagem) ? 'agent' : 'user'
+}
+
+function normalizeMessageText(value) {
+  if (value === null || value === undefined) {
+    return ''
+  }
+
+  return String(value)
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
 }
 
 function MensagensCampoPage() {
@@ -443,7 +456,37 @@ function MensagensCampoPage() {
                           {mensagem.status_processamento || 'pendente'}
                         </span>
                       </div>
-                      <p className="whitespace-pre-wrap text-sm">{mensagem.texto || '(sem texto)'}</p>
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm, remarkBreaks]}
+                        components={{
+                          p: ({ children }) => <p className="mb-2 text-sm leading-6 last:mb-0">{children}</p>,
+                          ul: ({ children }) => <ul className="mb-2 list-disc pl-5 text-sm leading-6 last:mb-0">{children}</ul>,
+                          ol: ({ children }) => <ol className="mb-2 list-decimal pl-5 text-sm leading-6 last:mb-0">{children}</ol>,
+                          li: ({ children }) => <li className="mb-1">{children}</li>,
+                          code: ({ inline, children }) =>
+                            inline ? (
+                              <code className={`rounded px-1 py-0.5 text-[12px] ${botMessage ? 'bg-stone-700 text-stone-50' : 'bg-stone-100 text-stone-900'}`}>
+                                {children}
+                              </code>
+                            ) : (
+                              <pre className={`mb-2 overflow-x-auto rounded-lg p-2 text-xs ${botMessage ? 'bg-stone-800 text-stone-50' : 'bg-stone-100 text-stone-900'}`}>
+                                <code>{children}</code>
+                              </pre>
+                            ),
+                          a: ({ href, children }) => (
+                            <a
+                              href={href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={`underline ${botMessage ? 'text-orange-200' : 'text-blue-700'}`}
+                            >
+                              {children}
+                            </a>
+                          ),
+                        }}
+                      >
+                        {normalizeMessageText(mensagem.texto) || '(sem texto)'}
+                      </ReactMarkdown>
                       <p className={`mt-2 text-[11px] ${botMessage ? 'text-left text-stone-300' : 'text-right text-stone-500'}`}>
                         {formatDateTime(mensagem.recebida_em)}
                       </p>

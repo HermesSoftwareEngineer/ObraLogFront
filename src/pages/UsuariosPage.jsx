@@ -1,8 +1,14 @@
-import { KeyRound, LoaderCircle, Pencil, Plus, Trash2, UserRound, X } from 'lucide-react'
+import { Ban, Copy, KeyRound, LoaderCircle, Pencil, Plus, Trash2, UserRound, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import DashboardShell from '../components/DashboardShell'
-import { generateTelegramLinkCode, getCurrentUser } from '../services/authService'
+import {
+  cancelInviteCode,
+  createInviteCode,
+  generateTelegramLinkCode,
+  getCurrentUser,
+  listInviteCodes,
+} from '../services/authService'
 import { clearAuthSession, getAuthToken } from '../services/authStorage'
 import { createUser, deleteUser, getUserById, listUsers, updateUser } from '../services/usersService'
 
@@ -61,12 +67,47 @@ function normalizeUser(data) {
   return data
 }
 
+function normalizeInvites(data) {
+  if (Array.isArray(data)) {
+    return data
+  }
+
+  if (Array.isArray(data?.invites)) {
+    return data.invites
+  }
+
+  if (Array.isArray(data?.items)) {
+    return data.items
+  }
+
+  return []
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return '-'
+  }
+
+  const parsed = new Date(value)
+
+  if (Number.isNaN(parsed.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(parsed)
+}
+
 function UsuariosPage() {
   const navigate = useNavigate()
   const [currentUser, setCurrentUser] = useState(null)
   const [users, setUsers] = useState([])
+  const [invites, setInvites] = useState([])
   const [selectedUser, setSelectedUser] = useState(null)
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [isCreateInviteModalOpen, setIsCreateInviteModalOpen] = useState(false)
+  const [isCreateUserModalOpen, setIsCreateUserModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [telegramCodeTarget, setTelegramCodeTarget] = useState(null)
@@ -79,6 +120,11 @@ function UsuariosPage() {
     nivel_acesso: 'encarregado',
     telegram_chat_id: '',
   })
+  const [createdInvite, setCreatedInvite] = useState(null)
+  const [inviteForm, setInviteForm] = useState({
+    nivel_acesso: 'encarregado',
+    email_destinatario: '',
+  })
   const [editForm, setEditForm] = useState({
     id: null,
     nome: '',
@@ -90,9 +136,12 @@ function UsuariosPage() {
   })
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmittingCreate, setIsSubmittingCreate] = useState(false)
+  const [isSubmittingCreateUser, setIsSubmittingCreateUser] = useState(false)
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isCancellingInviteCode, setIsCancellingInviteCode] = useState('')
   const [isGeneratingTelegramCode, setIsGeneratingTelegramCode] = useState(false)
+  const [usersError, setUsersError] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
@@ -109,8 +158,29 @@ function UsuariosPage() {
       return
     }
 
-    const usersData = await listUsers(token)
-    setUsers(normalizeUsers(usersData))
+    try {
+      const usersData = await listUsers(token)
+      setUsers(normalizeUsers(usersData))
+      setUsersError('')
+    } catch (err) {
+      if (err.status === 403) {
+        setUsers([])
+        setUsersError('Seu perfil nao possui permissao para listar usuarios cadastrados.')
+        return
+      }
+
+      throw err
+    }
+  }
+
+  const loadInviteCodes = async () => {
+    if (!token) {
+      navigate('/login', { replace: true })
+      return
+    }
+
+    const invitesData = await listInviteCodes(token)
+    setInvites(normalizeInvites(invitesData))
   }
 
   useEffect(() => {
@@ -127,12 +197,12 @@ function UsuariosPage() {
         const meData = await getCurrentUser(token)
         setCurrentUser(meData.user)
 
-        if (meData.user?.nivel_acesso !== 'administrador') {
-          setError('Apenas administradores podem acessar a gestao de usuarios.')
+        if (!['administrador', 'gerente'].includes(meData.user?.nivel_acesso)) {
+          setError('Apenas administradores ou gerentes podem acessar a gestao de usuarios.')
           return
         }
 
-        await loadUsers()
+        await Promise.all([loadUsers(), loadInviteCodes()])
       } catch (err) {
         setError(err.message || 'Nao foi possivel carregar os usuarios.')
         if (err.status === 401 || err.status === 403) {
@@ -146,6 +216,10 @@ function UsuariosPage() {
     bootstrap()
   }, [token, navigate])
 
+  const handleInviteChange = (field, value) => {
+    setInviteForm((prev) => ({ ...prev, [field]: value }))
+  }
+
   const handleCreateChange = (field, value) => {
     setCreateForm((prev) => ({ ...prev, [field]: value }))
   }
@@ -154,11 +228,42 @@ function UsuariosPage() {
     setEditForm((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleCreateUser = async (event) => {
+  const handleCreateInviteCode = async (event) => {
     event.preventDefault()
     setError('')
     setSuccess('')
     setIsSubmittingCreate(true)
+
+    try {
+      const payload = {
+        nivel_acesso: inviteForm.nivel_acesso,
+      }
+
+      if (inviteForm.email_destinatario.trim()) {
+        payload.email_destinatario = inviteForm.email_destinatario.trim()
+      }
+
+      const data = await createInviteCode(token, payload)
+      const invite = data?.invite || data
+      setCreatedInvite(invite)
+      setSuccess('Convite de cadastro gerado com sucesso.')
+      setInviteForm({
+        nivel_acesso: 'encarregado',
+        email_destinatario: '',
+      })
+      await loadInviteCodes()
+    } catch (err) {
+      setError(err.message || 'Nao foi possivel gerar o convite de cadastro.')
+    } finally {
+      setIsSubmittingCreate(false)
+    }
+  }
+
+  const handleCreateUser = async (event) => {
+    event.preventDefault()
+    setError('')
+    setSuccess('')
+    setIsSubmittingCreateUser(true)
 
     try {
       const payload = {
@@ -186,12 +291,56 @@ function UsuariosPage() {
         nivel_acesso: 'encarregado',
         telegram_chat_id: '',
       })
-      setIsCreateModalOpen(false)
+      setIsCreateUserModalOpen(false)
       await loadUsers()
     } catch (err) {
       setError(err.message || 'Nao foi possivel criar o usuario.')
     } finally {
-      setIsSubmittingCreate(false)
+      setIsSubmittingCreateUser(false)
+    }
+  }
+
+  const handleCopyInviteCode = async () => {
+    if (!createdInvite?.codigo) {
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(createdInvite.codigo)
+      setSuccess('Codigo de convite copiado para a area de transferencia.')
+    } catch {
+      setError('Nao foi possivel copiar o codigo automaticamente.')
+    }
+  }
+
+  const handleCancelInviteCode = async (inviteCode) => {
+    if (!inviteCode) {
+      return
+    }
+
+    const shouldCancel = window.confirm('Deseja cancelar este convite pendente?')
+
+    if (!shouldCancel) {
+      return
+    }
+
+    setError('')
+    setSuccess('')
+    setIsCancellingInviteCode(inviteCode)
+
+    try {
+      await cancelInviteCode(token, inviteCode)
+      setSuccess('Convite cancelado com sucesso.')
+
+      if (createdInvite?.codigo === inviteCode) {
+        setCreatedInvite(null)
+      }
+
+      await loadInviteCodes()
+    } catch (err) {
+      setError(err.message || 'Nao foi possivel cancelar o convite.')
+    } finally {
+      setIsCancellingInviteCode('')
     }
   }
 
@@ -323,7 +472,7 @@ function UsuariosPage() {
     }
   }
 
-  const isAdmin = currentUser?.nivel_acesso === 'administrador'
+  const canManageUsers = ['administrador', 'gerente'].includes(currentUser?.nivel_acesso)
 
   return (
     <>
@@ -345,13 +494,13 @@ function UsuariosPage() {
             </div>
           )}
 
-          {!isLoading && !isAdmin && (
+          {!isLoading && !canManageUsers && (
             <p className="mt-8 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error || 'Acesso negado. Esta area e exclusiva para administradores.'}
+              {error || 'Acesso negado. Esta area e exclusiva para administradores e gerentes.'}
             </p>
           )}
 
-          {!isLoading && isAdmin && (
+          {!isLoading && canManageUsers && (
             <div className="mt-8 space-y-6">
               {error && (
                 <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
@@ -365,15 +514,35 @@ function UsuariosPage() {
               <section className="rounded-2xl border border-stone-200 bg-white p-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h2 className="font-display text-xl font-bold text-stone-900">Lista de usuarios</h2>
-                  <button
-                    type="button"
-                    onClick={() => setIsCreateModalOpen(true)}
-                    className="inline-flex items-center gap-2 rounded-xl bg-[#F97316] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-orange-500"
-                  >
-                    <Plus size={16} />
-                    Cadastrar usuario
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsCreateUserModalOpen(true)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:bg-stone-100"
+                    >
+                      <Plus size={16} />
+                      Cadastrar usuario
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreatedInvite(null)
+                        setIsCreateInviteModalOpen(true)
+                      }}
+                      className="inline-flex items-center gap-2 rounded-xl bg-[#F97316] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-orange-500"
+                    >
+                      <Plus size={16} />
+                      Gerar convite
+                    </button>
+                  </div>
                 </div>
+
+                {usersError && (
+                  <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    {usersError}
+                  </p>
+                )}
+
                 <div className="mt-4 overflow-x-auto">
                   <table className="min-w-full border-separate border-spacing-y-2 text-sm">
                     <thead>
@@ -438,15 +607,73 @@ function UsuariosPage() {
                   </table>
                 </div>
               </section>
+
+              <section className="rounded-2xl border border-stone-200 bg-white p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="font-display text-xl font-bold text-stone-900">Convites ativos</h2>
+                  <span className="rounded-lg bg-stone-100 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-stone-600">
+                    expiram em 24h
+                  </span>
+                </div>
+
+                <div className="mt-4 overflow-x-auto">
+                  <table className="min-w-full border-separate border-spacing-y-2 text-sm">
+                    <thead>
+                      <tr className="text-left text-stone-500">
+                        <th className="px-3 py-2">Codigo</th>
+                        <th className="px-3 py-2">Nivel</th>
+                        <th className="px-3 py-2">E-mail destinatario</th>
+                        <th className="px-3 py-2">Expira em</th>
+                        <th className="px-3 py-2">Acoes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {invites.map((invite) => (
+                        <tr key={invite.id || invite.codigo} className="rounded-xl bg-[#F5F5F4] text-stone-700">
+                          <td className="rounded-l-xl px-3 py-2 font-mono font-semibold tracking-wide text-stone-900">
+                            {invite.codigo}
+                          </td>
+                          <td className="px-3 py-2">{invite.nivel_acesso}</td>
+                          <td className="px-3 py-2">{invite.email_destinatario || '-'}</td>
+                          <td className="px-3 py-2">{formatDateTime(invite.expira_em)}</td>
+                          <td className="rounded-r-xl px-3 py-2">
+                            <button
+                              type="button"
+                              onClick={() => handleCancelInviteCode(invite.codigo)}
+                              disabled={isCancellingInviteCode === invite.codigo}
+                              className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              {isCancellingInviteCode === invite.codigo ? (
+                                <LoaderCircle size={14} className="animate-spin" />
+                              ) : (
+                                <Ban size={14} />
+                              )}
+                              Cancelar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+
+                      {invites.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="px-3 py-8 text-center text-stone-500">
+                            Nenhum convite ativo no momento.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
             </div>
           )}
     </DashboardShell>
 
-      {isCreateModalOpen && (
+      {isCreateUserModalOpen && (
         <ModalShell
           title="Cadastrar usuario"
           icon={<Plus size={18} className="text-[#F97316]" />}
-          onClose={() => setIsCreateModalOpen(false)}
+          onClose={() => setIsCreateUserModalOpen(false)}
         >
           <form onSubmit={handleCreateUser} className="grid gap-3 md:grid-cols-2">
             <input
@@ -498,15 +725,84 @@ function UsuariosPage() {
             <div className="flex gap-2 md:col-span-2">
               <button
                 type="submit"
-                disabled={isSubmittingCreate}
+                disabled={isSubmittingCreateUser}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#F97316] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-80"
               >
-                {isSubmittingCreate && <LoaderCircle size={16} className="animate-spin" />}
+                {isSubmittingCreateUser && <LoaderCircle size={16} className="animate-spin" />}
                 Cadastrar
               </button>
               <button
                 type="button"
-                onClick={() => setIsCreateModalOpen(false)}
+                onClick={() => setIsCreateUserModalOpen(false)}
+                className="rounded-xl border border-stone-300 px-4 py-2.5 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
+        </ModalShell>
+      )}
+
+      {isCreateInviteModalOpen && (
+        <ModalShell
+          title="Gerar convite de cadastro"
+          icon={<Plus size={18} className="text-[#F97316]" />}
+          onClose={() => {
+            setIsCreateInviteModalOpen(false)
+            setCreatedInvite(null)
+          }}
+        >
+          <form onSubmit={handleCreateInviteCode} className="grid gap-3 md:grid-cols-2">
+            <select
+              value={inviteForm.nivel_acesso}
+              onChange={(event) => handleInviteChange('nivel_acesso', event.target.value)}
+              className="rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
+            >
+              {accessLevels.map((level) => (
+                <option key={level} value={level}>
+                  {level}
+                </option>
+              ))}
+            </select>
+            <input
+              type="email"
+              value={inviteForm.email_destinatario}
+              onChange={(event) => handleInviteChange('email_destinatario', event.target.value)}
+              placeholder="E-mail destinatario (opcional)"
+              className="rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-[#F97316] focus:ring-2 focus:ring-orange-200"
+            />
+
+            {createdInvite && (
+              <div className="rounded-xl border border-stone-200 bg-[#F5F5F4] p-4 md:col-span-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-stone-500">Codigo de convite</p>
+                <p className="mt-1 font-mono text-2xl font-extrabold tracking-wider text-stone-900">{createdInvite.codigo}</p>
+                <p className="mt-2 text-xs text-stone-600">Expira em: {formatDateTime(createdInvite.expira_em)}</p>
+                <button
+                  type="button"
+                  onClick={handleCopyInviteCode}
+                  className="mt-3 inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 hover:bg-stone-100"
+                >
+                  <Copy size={14} />
+                  Copiar codigo
+                </button>
+              </div>
+            )}
+
+            <div className="flex gap-2 md:col-span-2">
+              <button
+                type="submit"
+                disabled={isSubmittingCreate}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#F97316] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-80"
+              >
+                {isSubmittingCreate && <LoaderCircle size={16} className="animate-spin" />}
+                Gerar convite
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCreateInviteModalOpen(false)
+                  setCreatedInvite(null)
+                }}
                 className="rounded-xl border border-stone-300 px-4 py-2.5 text-sm font-semibold text-stone-700 hover:bg-stone-100"
               >
                 Cancelar

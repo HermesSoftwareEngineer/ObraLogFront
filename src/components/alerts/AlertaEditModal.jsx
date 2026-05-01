@@ -37,13 +37,15 @@ function AlertaEditModal({
 
   const reporterId = headerMeta?.reported_by ?? null
   const reporterName = headerMeta?.reported_by_nome || '-'
-  const reportedAt = headerMeta?.created_at
+  const reportedAt = headerMeta?.reported_at || headerMeta?.created_at
 
   const reportedAtLabel = reportedAt
     ? new Date(reportedAt).toLocaleString('pt-BR')
     : '-'
 
   const hiddenFields = new Set([
+    'created_at',
+    'reported_at',
     'is_read',
     'lido',
     'read_by_me',

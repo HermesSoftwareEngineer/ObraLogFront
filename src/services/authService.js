@@ -44,3 +44,25 @@ export async function generateTelegramLinkCode(token, payload) {
     body: payload,
   })
 }
+
+export async function createInviteCode(token, payload) {
+  return apiRequest('/auth/invite-codes', {
+    method: 'POST',
+    token,
+    body: payload,
+  })
+}
+
+export async function listInviteCodes(token) {
+  return apiRequest('/auth/invite-codes', {
+    method: 'GET',
+    token,
+  })
+}
+
+export async function cancelInviteCode(token, inviteCode) {
+  return apiRequest(`/auth/invite-codes/${encodeURIComponent(inviteCode)}`, {
+    method: 'DELETE',
+    token,
+  })
+}

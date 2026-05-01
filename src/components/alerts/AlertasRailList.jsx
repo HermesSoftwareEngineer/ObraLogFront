@@ -1,5 +1,5 @@
 import { Bell, BellOff, LoaderCircle } from 'lucide-react'
-import { getAlertaId, severityClasses } from './alertasUtils'
+import { getAlertaDescription, getAlertaId, severityClasses } from './alertasUtils'
 
 function formatAlertDateTime(alerta) {
   const value = alerta?.reported_at || alerta?.created_at
@@ -47,6 +47,7 @@ function AlertasRailList({
         const severity = String(alerta.severity || '').toLowerCase()
         const isRead = getAlertaReadState(alerta)
         const alertDateTime = formatAlertDateTime(alerta)
+        const alertDescription = getAlertaDescription(alerta)
 
         return (
           <div
@@ -89,7 +90,7 @@ function AlertasRailList({
               </div>
             </div>
             <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-stone-500">{alerta.type || '-'}</p>
-            <p className="mt-1 line-clamp-2 text-xs text-stone-600">{alerta.description || 'Sem descricao'}</p>
+            <p className="mt-1 line-clamp-2 text-xs text-stone-600">{alertDescription || 'Sem descricao'}</p>
             <p className="mt-1 text-[11px] text-stone-500">{alertDateTime}</p>
           </div>
         )

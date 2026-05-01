@@ -59,7 +59,7 @@ function AlertasRightRail({ isCollapsed = false, onToggleCollapse }) {
   const [isSaving, setIsSaving] = useState(false)
   const [markingReadId, setMarkingReadId] = useState(null)
   const [readStateOverrides, setReadStateOverrides] = useState({})
-  const [listFilter, setListFilter] = useState('all')
+  const [listFilter, setListFilter] = useState('unread')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -75,6 +75,11 @@ function AlertasRightRail({ isCollapsed = false, onToggleCollapse }) {
       ? readStateOverrides[String(selectedAlertId)]
       : isAlertaRead({ ...(selectedAlerta || {}), ...(formValues || {}) })
 
+  const buildListFilters = (filter) =>
+    filter === 'unread'
+      ? { apenas_nao_lidos: true }
+      : {}
+
   useEffect(() => {
     const load = async () => {
       if (!token) {
@@ -86,7 +91,7 @@ function AlertasRightRail({ isCollapsed = false, onToggleCollapse }) {
       setError('')
 
       try {
-        const data = await listAlertas(token, {})
+        const data = await listAlertas(token, buildListFilters(listFilter))
         const normalized = normalizeAlertas(data)
         setAlertas(normalized)
       } catch (err) {
@@ -97,7 +102,7 @@ function AlertasRightRail({ isCollapsed = false, onToggleCollapse }) {
     }
 
     load()
-  }, [token])
+  }, [token, listFilter])
 
   useEffect(() => {
     const loadTipos = async () => {
@@ -218,7 +223,7 @@ function AlertasRightRail({ isCollapsed = false, onToggleCollapse }) {
 
       const [updatedDetails, refreshedList] = await Promise.all([
         getAlertaById(token, selectedAlertId),
-        listAlertas(token, {}),
+        listAlertas(token, buildListFilters(listFilter)),
       ])
 
       const editable = buildEditableState(normalizeAlerta(updatedDetails))
@@ -278,7 +283,7 @@ function AlertasRightRail({ isCollapsed = false, onToggleCollapse }) {
 
       setSuccess(`Alerta marcado como ${currentlyRead ? 'nao lido' : 'lido'}.`)
 
-      const refreshedListData = await listAlertas(token, {})
+      const refreshedListData = await listAlertas(token, buildListFilters(listFilter))
       setAlertas(normalizeAlertas(refreshedListData))
 
       if (String(selectedAlertId) === String(alertId)) {
